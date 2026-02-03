@@ -1,8 +1,8 @@
 """Pytest configuration and fixtures for vacation planner tests."""
 import asyncio
 import os
-from datetime import datetime, timezone
-from typing import AsyncGenerator, Generator
+from datetime import datetime, timedelta, timezone
+from typing import AsyncGenerator
 from uuid import uuid4
 
 import pytest
@@ -10,7 +10,6 @@ import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
-from sqlalchemy import event
 
 from app.database import Base, get_db
 from app.main import app
@@ -24,71 +23,44 @@ from app.auth import hash_password, create_access_token
 os.environ["JWT_SECRET"] = "test-secret-key-for-testing-only"
 os.environ["ENVIRONMENT"] = "testing"
 
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator:
-    """Create event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-# SQLite UUID handler
-@event.listens_for(Base.metadata, "before_create")
-def receive_before_create(target, connection, **kw):
-    """Handle UUID types for SQLite."""
-    pass
+# Module-level storage
+_engine = None
+_session_factory = None
 
 
 @pytest_asyncio.fixture
-async def async_engine():
-    """Create async SQLite engine for testing with UUID support."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.pool import StaticPool
-    from app.database import Base
+async def db_session():
+    """Create database engine, tables, and session for tests."""
+    global _engine, _session_factory
     
-    # Create async engine with proper UUID handling
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    # Create engine if not exists
+    if _engine is None:
+        _engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        # Create tables immediately
+        async with _engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        
+        # Create session factory
+        _session_factory = async_sessionmaker(
+            _engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
     
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
-    yield engine
-    
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
-
-
-@pytest_asyncio.fixture
-async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
-    """Create a test database session."""
-    async_session_maker = async_sessionmaker(
-        async_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-    
-    async with async_session_maker() as session:
+    # Use the session factory to create a session
+    async with _session_factory() as session:
         yield session
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Create a test client with database session override."""
-    async_session_maker = async_sessionmaker(
-        async_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-    
+async def client(db_session: AsyncSession):
+    """Create a test client using the database session."""
     async def override_get_db():
-        async with async_session_maker() as session:
+        async with _session_factory() as session:
             yield session
     
     app.dependency_overrides[get_db] = override_get_db
@@ -158,7 +130,7 @@ async def test_team2(db_session: AsyncSession, test_company: Company) -> Team:
 async def admin_user(db_session: AsyncSession, test_company: Company) -> User:
     """Create an admin user."""
     user = User(
-        email="admin@test.com",
+        email=f"admin_{uuid4().hex[:8]}@test.com",
         hashed_password=hash_password("adminpassword123"),
         first_name="Admin",
         last_name="User",
@@ -176,7 +148,7 @@ async def admin_user(db_session: AsyncSession, test_company: Company) -> User:
 async def manager_user(db_session: AsyncSession, test_company: Company, test_team: Team) -> User:
     """Create a manager user."""
     user = User(
-        email="manager@test.com",
+        email=f"manager_{uuid4().hex[:8]}@test.com",
         hashed_password=hash_password("managerpassword123"),
         first_name="Manager",
         last_name="User",
@@ -200,7 +172,7 @@ async def manager_user(db_session: AsyncSession, test_company: Company, test_tea
 async def manager_user2(db_session: AsyncSession, test_company: Company, test_team2: Team) -> User:
     """Create a second manager user for different team."""
     user = User(
-        email="manager2@test.com",
+        email=f"manager2_{uuid4().hex[:8]}@test.com",
         hashed_password=hash_password("managerpassword123"),
         first_name="Manager2",
         last_name="User",
@@ -224,7 +196,7 @@ async def manager_user2(db_session: AsyncSession, test_company: Company, test_te
 async def regular_user(db_session: AsyncSession, test_company: Company, test_team: Team) -> User:
     """Create a regular user."""
     user = User(
-        email="user@test.com",
+        email=f"user_{uuid4().hex[:8]}@test.com",
         hashed_password=hash_password("userpassword123"),
         first_name="Regular",
         last_name="User",
@@ -248,7 +220,7 @@ async def regular_user(db_session: AsyncSession, test_company: Company, test_tea
 async def regular_user2(db_session: AsyncSession, test_company: Company, test_team2: Team) -> User:
     """Create a second regular user in different team."""
     user = User(
-        email="user2@test.com",
+        email=f"user2_{uuid4().hex[:8]}@test.com",
         hashed_password=hash_password("userpassword123"),
         first_name="Regular2",
         last_name="User",
@@ -272,8 +244,8 @@ async def regular_user2(db_session: AsyncSession, test_company: Company, test_te
 async def inactive_user(db_session: AsyncSession, test_company: Company) -> User:
     """Create an inactive user."""
     user = User(
-        email="inactive@test.com",
-        hashed_password=None,
+        email=f"inactive_{uuid4().hex[:8]}@test.com",
+        hashed_password=hash_password("inactivepassword123"),
         first_name="Inactive",
         last_name="User",
         role=UserRole.USER,
@@ -290,7 +262,7 @@ async def inactive_user(db_session: AsyncSession, test_company: Company) -> User
 async def invited_user(db_session: AsyncSession, test_company: Company, admin_user: User) -> User:
     """Create a user invited but not yet activated."""
     user = User(
-        email="invited@test.com",
+        email=f"invited_{uuid4().hex[:8]}@test.com",
         hashed_password=None,
         first_name="Invited",
         last_name="User",
@@ -305,7 +277,7 @@ async def invited_user(db_session: AsyncSession, test_company: Company, admin_us
     invite_token = InviteToken(
         token="test-invite-token",
         user_id=user.id,
-        expires_at=datetime.now(timezone.utc) + timezone.timedelta(days=7),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         created_by=admin_user.id
     )
     db_session.add(invite_token)

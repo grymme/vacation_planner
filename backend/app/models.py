@@ -6,7 +6,7 @@ from typing import Optional
 
 from sqlalchemy import (
     String, Text, DateTime, Date, ForeignKey, Integer, Enum as SQLEnum, 
-    Boolean, UUID, Index, UniqueConstraint, JSON, func
+    Boolean, Index, UniqueConstraint, JSON, func, TypeDecorator
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,6 +45,25 @@ class AuditAction(str, Enum):
     VACATION_REQUEST_CANCELLED = "vacation_request_cancelled"
 
 
+# Custom UUID type that stores as string for SQLite compatibility
+class StringUUID(TypeDecorator):
+    """Custom type for storing UUIDs as strings (SQLite compatible)."""
+    impl = String(36)
+    cache_ok = True
+    
+    def process_bind_param(self, value, dialect):
+        """Convert UUID to string for storage."""
+        if value is None:
+            return None
+        return str(value)
+    
+    def process_result_value(self, value, dialect):
+        """Convert string back to UUID."""
+        if value is None:
+            return None
+        return uuid.UUID(value)
+
+
 # =============================================================================
 # Company Model - multi-tenant isolation
 # =============================================================================
@@ -52,7 +71,7 @@ class Company(Base):
     """Company model for multi-tenant isolation."""
     __tablename__ = "companies"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -73,8 +92,8 @@ class Function(Base):
     """Function/department model."""
     __tablename__ = "functions"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -94,8 +113,8 @@ class Team(Base):
     """Team model for grouping users within a company."""
     __tablename__ = "teams"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -117,14 +136,14 @@ class User(Base):
     """User model for authentication and authorization."""
     __tablename__ = "users"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Nullable until password set via invite
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[UserRole] = mapped_column(SQLEnum(UserRole), default=UserRole.USER, nullable=False)
-    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    function_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("functions.id", ondelete="SET NULL"), nullable=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    function_id: Mapped[Optional[uuid.UUID]] = mapped_column(StringUUID, ForeignKey("functions.id", ondelete="SET NULL"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)  # False until password set
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -137,7 +156,7 @@ class User(Base):
     vacation_requests: Mapped[list["VacationRequest"]] = relationship("VacationRequest", back_populates="user", foreign_keys="VacationRequest.user_id")
     approved_requests: Mapped[list["VacationRequest"]] = relationship("VacationRequest", back_populates="approver", foreign_keys="VacationRequest.approver_id")
     audit_logs: Mapped[list["AuditLog"]] = relationship("AuditLog", back_populates="actor")
-    invite_tokens: Mapped[list["InviteToken"]] = relationship("InviteToken", back_populates="user", cascade="all, delete-orphan")
+    invite_tokens: Mapped[list["InviteToken"]] = relationship("InviteToken", back_populates="user", cascade="all, delete-orphan", foreign_keys="InviteToken.user_id")
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
     
     # Indexes
@@ -168,9 +187,9 @@ class TeamMembership(Base):
     """Team membership junction table."""
     __tablename__ = "team_memberships"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    team_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    team_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
@@ -188,9 +207,9 @@ class TeamManagerAssignment(Base):
     """Team manager assignment junction table."""
     __tablename__ = "team_manager_assignments"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    team_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    team_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
@@ -208,15 +227,15 @@ class VacationRequest(Base):
     """Vacation request model."""
     __tablename__ = "vacation_requests"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(StringUUID, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     vacation_type: Mapped[str] = mapped_column(String(50), default="annual")  # annual, sick, personal, etc.
     status: Mapped[VacationStatus] = mapped_column(SQLEnum(VacationStatus), default=VacationStatus.PENDING, nullable=False)
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    approver_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approver_id: Mapped[Optional[uuid.UUID]] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -257,11 +276,11 @@ class AuditLog(Base):
     """Audit log model for tracking admin/manager actions."""
     __tablename__ = "audit_logs"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
+    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action: Mapped[AuditAction] = mapped_column(SQLEnum(AuditAction), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "user", "team", "vacation_request"
-    resource_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    resource_id: Mapped[Optional[uuid.UUID]] = mapped_column(StringUUID, nullable=True)
     details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Additional context
     ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)  # IPv4 or IPv6
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -285,16 +304,16 @@ class InviteToken(Base):
     """Invite token model for invite/set-password flow."""
     __tablename__ = "invite_tokens"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
     token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="invite_tokens")
+    user: Mapped["User"] = relationship("User", back_populates="invite_tokens", foreign_keys=[user_id])
     creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
     
     # Indexes
@@ -308,9 +327,9 @@ class PasswordResetToken(Base):
     """Password reset token model."""
     __tablename__ = "password_reset_tokens"
     
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
     token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

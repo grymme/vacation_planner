@@ -1,6 +1,6 @@
 """Tests for authentication functionality."""
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 class TestPasswordHashing:
@@ -47,7 +47,7 @@ class TestPasswordHashing:
     
     def test_hash_uniqueness(self):
         """Test that same password produces different hashes (salt)."""
-        from app.auth import hash_password
+        from app.auth import hash_password, verify_password
         
         password = "samepassword"
         hash1 = hash_password(password)
@@ -57,8 +57,8 @@ class TestPasswordHashing:
         assert hash1 != hash2
         
         # But both should verify correctly
-        assert hash_password.verify(hash1, password) is True
-        assert hash_password.verify(hash2, password) is True
+        assert verify_password(password, hash1) is True
+        assert verify_password(password, hash2) is True
 
 
 class TestJWT:
@@ -113,15 +113,19 @@ class TestJWT:
         assert payload.get("type") == "access"
     
     def test_decode_invalid_token(self):
-        """Test decoding an invalid token."""
-        from app.auth import decode_token
+        """Test decoding an invalid token raises exception."""
+        from fastapi import HTTPException
         
-        payload = decode_token("invalid_token")
+        # Invalid token should raise HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            from app.auth import decode_token
+            decode_token("invalid_token")
         
-        assert payload is None
+        assert exc_info.value.status_code == 401
     
     def test_decode_expired_token(self):
-        """Test decoding an expired token raises error."""
+        """Test decoding an expired token raises exception."""
+        from fastapi import HTTPException
         from jose import jwt
         from app.config import settings
         
@@ -131,8 +135,8 @@ class TestJWT:
             "email": "test@example.com",
             "role": "user",
             "company_id": str(__import__("uuid").uuid4()),
-            "exp": datetime.now(timezone.utc) - timezone.timedelta(hours=1),
-            "iat": datetime.now(timezone.utc) - timezone.timedelta(hours=2),
+            "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+            "iat": datetime.now(timezone.utc) - timedelta(hours=2),
             "type": "access"
         }
         expired_token = jwt.encode(
@@ -142,9 +146,11 @@ class TestJWT:
         )
         
         from app.auth import decode_token
-        payload = decode_token(expired_token)
+        # Expired token should raise HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(expired_token)
         
-        assert payload is None
+        assert exc_info.value.status_code == 401
 
 
 class TestLogin:
@@ -156,7 +162,7 @@ class TestLogin:
         response = await client.post(
             "/api/v1/auth/login",
             json={
-                "email": "user@test.com",
+                "email": regular_user.email,
                 "password": "userpassword123"
             }
         )
@@ -173,7 +179,7 @@ class TestLogin:
         response = await client.post(
             "/api/v1/auth/login",
             json={
-                "email": "user@test.com",
+                "email": regular_user.email,
                 "password": "wrongpassword"
             }
         )
@@ -201,13 +207,13 @@ class TestLogin:
         response = await client.post(
             "/api/v1/auth/login",
             json={
-                "email": "inactive@test.com",
-                "password": "password123"
+                "email": inactive_user.email,
+                "password": "inactivepassword123"
             }
         )
         
         assert response.status_code == 401
-        assert "inactive" in response.json()["detail"].lower()
+        assert "deactivated" in response.json()["detail"].lower()
     
     @pytest.mark.asyncio
     async def test_login_no_password_set(self, client, invited_user):
@@ -215,7 +221,7 @@ class TestLogin:
         response = await client.post(
             "/api/v1/auth/login",
             json={
-                "email": "invited@test.com",
+                "email": invited_user.email,
                 "password": "password123"
             }
         )
@@ -236,7 +242,7 @@ class TestGetCurrentUser:
         
         assert response.status_code == 200
         data = response.json()
-        assert data["email"] == "user@test.com"
+        assert data["email"] == regular_user.email
         assert data["first_name"] == "Regular"
         assert data["role"] == "user"
     
@@ -268,7 +274,7 @@ class TestGetCurrentUser:
         
         assert response.status_code == 200
         data = response.json()
-        assert data["email"] == "admin@test.com"
+        assert data["email"] == admin_user.email
         assert data["role"] == "admin"
     
     @pytest.mark.asyncio
@@ -281,7 +287,7 @@ class TestGetCurrentUser:
         
         assert response.status_code == 200
         data = response.json()
-        assert data["email"] == "manager@test.com"
+        assert data["email"] == manager_user.email
         assert data["role"] == "manager"
 
 
@@ -295,17 +301,18 @@ class TestTokenRefresh:
         login_response = await client.post(
             "/api/v1/auth/login",
             json={
-                "email": "user@test.com",
+                "email": regular_user.email,
                 "password": "userpassword123"
             }
         )
         
-        refresh_token = login_response.json()["refresh_token"]
+        assert login_response.status_code == 200
+        refresh_token = login_response.cookies.get("refresh_token")
         
         # Use refresh token to get new access token
         response = await client.post(
             "/api/v1/auth/refresh",
-            json={"refresh_token": refresh_token}
+            cookies={"refresh_token": refresh_token}
         )
         
         assert response.status_code == 200
@@ -317,7 +324,7 @@ class TestTokenRefresh:
         """Test refreshing with invalid token."""
         response = await client.post(
             "/api/v1/auth/refresh",
-            json={"refresh_token": "invalid-refresh-token"}
+            cookies={"refresh_token": "invalid-refresh-token"}
         )
         
         assert response.status_code == 401
@@ -403,7 +410,7 @@ class TestLogout:
         login_response = await client.post(
             "/api/v1/auth/login",
             json={
-                "email": "user@test.com",
+                "email": regular_user.email,
                 "password": "userpassword123"
             }
         )
