@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  caddy:
+    image: caddy:2.7-alpine
+    container_name: vacation-planner-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    environment:
+      - DOMAIN=${DOMAIN:-vacation.local}
+      - EMAIL=${EMAIL:-admin@example.com}
+      - HTTPS_MODE=${HTTPS_MODE:-lan}
+    networks:
+      - vacation_network
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.backend
+    image: vacation-planner-backend:latest
+    container_name: vacation-planner-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS}
+      - ARGON2_TIME_COST=${ARGON2_TIME_COST}
+      - ARGON2_MEMORY_COST=${ARGON2_MEMORY_COST}
+      - ARGON2_PARALLELISM=${ARGON2_PARALLELISM}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME}
+      - ADMIN_LAST_NAME=${ADMIN_LAST_NAME}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - MAIL_MODE=${MAIL_MODE}
+      - MAIL_SMTP_HOST=${MAIL_SMTP_HOST}
+      - MAIL_SMTP_PORT=${MAIL_SMTP_PORT}
+      - MAIL_SMTP_USER=${MAIL_SMTP_USER}
+      - MAIL_SMTP_PASSWORD=${MAIL_SMTP_PASSWORD}
+      - MAIL_FROM=${MAIL_FROM}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+    volumes:
+      - backend_logs:/app/logs
+    networks:
+      - vacation_network
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  db:
+    image: postgres:15-alpine
+    container_name: vacation-planner-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-vacation_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vacation_password}
+      - POSTGRES_DB=${POSTGRES_DB:-vacation_planner}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - vacation_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vacation_user} -d ${POSTGRES_DB:-vacation_planner}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c max_connections=100
+      -c effective_cache_size=512MB
+      -c work_mem=16MB
+      -c maintenance_work_mem=128MB
+      -c fsync=on
+      -c synchronous_commit=off
+      -c full_page_writes=off
+
+networks:
+  vacation_network:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  postgres_data:
+  backend_logs:
+
+profiles:
+  - lan
+  - public

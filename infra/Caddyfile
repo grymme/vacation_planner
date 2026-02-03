@@ -1,0 +1,122 @@
+{
+    admin off
+    auto_https off
+    log {
+        level INFO
+        format json
+    }
+}
+
+{$DOMAIN:vacation.local} {
+    tls {$EMAIL:admin@example.com} {
+        if {$HTTPS_MODE} == "public" {
+            issuer acme
+        }
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://{$DOMAIN:vacation.local};"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    }
+
+    # Rate limiting (basic)
+    rate_limit {
+        zone static_files 10mb 1h
+    }
+
+    # Frontend (static files in production)
+    @static {
+        path /static/*
+        path /assets/*
+    }
+    reverse_proxy @static localhost:3000 {
+        header_down Cache-Control "public, max-age=31536000"
+    }
+
+    # API backend
+    @api path /api/*
+    reverse_proxy @api localhost:8000 {
+        header_up Host "localhost:8000"
+        header_up X-Real-IP "{$REMOTE_ADDR}"
+        header_up X-Forwarded-For "{$REMOTE_ADDR}"
+        header_up X-Forwarded-Proto "{$PROTO}"
+    }
+
+    # Auth endpoints (no CSRF protection needed for HTTP-only cookies)
+    @auth path /auth/*
+    reverse_proxy @auth localhost:8000 {
+        header_up Host "localhost:8000"
+        header_up X-Real-IP "{$REMOTE_ADDR}"
+        header_up X-Forwarded-For "{$REMOTE_ADDR}"
+        header_up X-Forwarded-Proto "{$PROTO}"
+    }
+
+    # Health check
+    @health path /health
+    reverse_proxy @health localhost:8000 {
+        header_up Host "localhost:8000"
+    }
+
+    # Root - serve frontend SPA
+    @spa {
+        not path /api/*
+        not path /auth/*
+        not path /health/*
+        not path /.well-known/*
+    }
+    reverse_proxy @spa localhost:3000 {
+        header_up Host "localhost:3000"
+    }
+
+    # HTTP to HTTPS redirect (only in public mode)
+    @http {
+        protocol http
+    }
+    redir @http https://{host}{uri} 301 {
+        if {$HTTPS_MODE} == "public"
+    }
+}
+
+# LAN mode - self-signed certificates
+http://{$DOMAIN:vacation.local} {
+    tls internal {
+        on_demand
+    }
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+    }
+
+    @api path /api/*
+    reverse_proxy @api localhost:8000 {
+        header_up Host "localhost:8000"
+    }
+
+    @auth path /auth/*
+    reverse_proxy @auth localhost:8000 {
+        header_up Host "localhost:8000"
+    }
+
+    @health path /health
+    reverse_proxy @health localhost:8000 {
+        header_up Host "localhost:8000"
+    }
+
+    @spa {
+        not path /api/*
+        not path /auth/*
+        not path /health/*
+        not path /.well-known/*
+    }
+    reverse_proxy @spa localhost:3000 {
+        header_up Host "localhost:3000"
+    }
+}

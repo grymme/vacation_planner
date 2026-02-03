@@ -1,0 +1,37 @@
+.teams-layout {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 24px;
+}
+
+.teams-list h3,
+.team-members h3 {
+  margin-bottom: 16px;
+  color: var(--gray-700);
+}
+
+.teams-list ul {
+  list-style: none;
+}
+
+.teams-list li {
+  padding: 12px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 4px;
+}
+
+.teams-list li:hover {
+  background: var(--gray-100);
+}
+
+.teams-list li.active {
+  background: var(--primary);
+  color: white;
+}
+
+.placeholder {
+  color: var(--gray-400);
+  font-style: italic;
+}

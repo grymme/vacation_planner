@@ -1,0 +1,65 @@
+.app-header {
+  background: white;
+  border-bottom: 1px solid var(--gray-200);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.header-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 20px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo a {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--gray-800);
+  text-decoration: none;
+}
+
+.main-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.main-nav a {
+  padding: 8px 16px;
+  border-radius: 6px;
+  color: var(--gray-600);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.main-nav a:hover {
+  background: var(--gray-100);
+  color: var(--gray-800);
+}
+
+.main-nav a.active {
+  background: var(--primary);
+  color: white;
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gray-700);
+}

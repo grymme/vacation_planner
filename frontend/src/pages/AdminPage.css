@@ -1,0 +1,38 @@
+.admin-page .admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--gray-200);
+  padding-bottom: 8px;
+}
+
+.admin-page .admin-tabs button {
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--gray-500);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.admin-page .admin-tabs button:hover {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.admin-page .admin-tabs button.active {
+  background: var(--primary);
+  color: white;
+}
+
+.invite-form {
+  max-width: 600px;
+}
+
+.invite-form h3 {
+  margin-bottom: 20px;
+  color: var(--gray-800);
+}
