@@ -10,11 +10,20 @@ echo "Vacation Planner Deployment"
 echo "Domain: $DOMAIN | Profile: $PROFILE"
 echo "=========================================="
 
-# Check if in project root
-if [ ! -f "docker-compose.yml" ]; then
-    echo "Error: docker-compose.yml not found. Run this from the project root."
+# Check if docker-compose.yml exists in current dir, otherwise look in infra/
+COMPOSE_DIR=""
+ORIGINAL_DIR=$(pwd)
+
+if [ -f "docker-compose.yml" ]; then
+    COMPOSE_DIR="."
+elif [ -f "infra/docker-compose.yml" ]; then
+    COMPOSE_DIR="infra"
+else
+    echo "Error: docker-compose.yml not found in current directory or infra/"
     exit 1
 fi
+
+echo "Found docker-compose.yml in: $COMPOSE_DIR"
 
 # Step 1: Create data directory
 echo "[1/6] Creating data directory..."
@@ -44,11 +53,23 @@ fi
 
 # Step 3: Build containers
 echo "[3/6] Building Docker containers..."
-docker compose build
+if [ "$COMPOSE_DIR" = "infra" ]; then
+    cd infra
+    docker compose -f ../docker-compose.yml build
+    cd "$ORIGINAL_DIR"
+else
+    docker compose build
+fi
 
 # Step 4: Start services
 echo "[4/6] Starting services..."
-docker compose --profile "$PROFILE" up -d
+if [ "$COMPOSE_DIR" = "infra" ]; then
+    cd infra
+    docker compose -f ../docker-compose.yml --profile "$PROFILE" up -d
+    cd "$ORIGINAL_DIR"
+else
+    docker compose --profile "$PROFILE" up -d
+fi
 
 # Step 5: Wait for backend
 echo "[5/6] Waiting for backend to be ready..."
@@ -66,8 +87,15 @@ done
 
 # Step 6: Initialize database
 echo "[6/6] Initializing database..."
-docker compose exec -T backend alembic upgrade head 2>/dev/null || echo "Migrations may already be applied"
-docker compose exec -T backend python scripts/seed_admin.py 2>/dev/null || echo "Admin user may already exist"
+if [ "$COMPOSE_DIR" = "infra" ]; then
+    cd infra
+    docker compose -f ../docker-compose.yml exec -T backend alembic upgrade head 2>/dev/null || echo "Migrations may already be applied"
+    docker compose -f ../docker-compose.yml exec -T backend python scripts/seed_admin.py 2>/dev/null || echo "Admin user may already exist"
+    cd "$ORIGINAL_DIR"
+else
+    docker compose exec -T backend alembic upgrade head 2>/dev/null || echo "Migrations may already be applied"
+    docker compose exec -T backend python scripts/seed_admin.py 2>/dev/null || echo "Admin user may already exist"
+fi
 
 echo ""
 echo "=========================================="
@@ -86,7 +114,13 @@ echo ""
 echo "IMPORTANT: Change the admin password after first login!"
 echo ""
 echo "Useful commands:"
-echo "  View logs:  docker compose logs -f"
-echo "  Restart:    docker compose restart"
-echo "  Stop:       docker compose down"
+if [ "$COMPOSE_DIR" = "infra" ]; then
+    echo "  View logs:  cd infra && docker compose -f ../docker-compose.yml logs -f"
+    echo "  Restart:    cd infra && docker compose -f ../docker-compose.yml restart"
+    echo "  Stop:       cd infra && docker compose -f ../docker-compose.yml down"
+else
+    echo "  View logs:  docker compose logs -f"
+    echo "  Restart:    docker compose restart"
+    echo "  Stop:       docker compose down"
+fi
 echo "=========================================="
