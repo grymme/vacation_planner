@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { vacationBalanceApi, type VacationBalance } from '../api/vacation';
+import { vacationBalanceApi, type VacationBalance as VacationBalanceType } from '../api/vacation';
 import './VacationBalance.css';
 
-export const VacationBalance: React.FC = () => {
-  const [balance, setBalance] = useState<VacationBalance | null>(null);
+export const VacationBalanceDisplay: React.FC = () => {
+  const [balance, setBalance] = useState<VacationBalanceType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

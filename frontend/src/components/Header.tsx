@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { VacationBalance } from './VacationBalance';
+import { VacationBalanceDisplay } from './VacationBalanceDisplay';
 import './Header.css';
 
 export default function Header() {
@@ -51,7 +51,7 @@ export default function Header() {
         
         <div className="user-menu">
           <div className="header-balance">
-            <VacationBalance />
+            <VacationBalanceDisplay />
           </div>
           <div className="user-info">
             <span className="user-name">{user.first_name} {user.last_name}</span>
