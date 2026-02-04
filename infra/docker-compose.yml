@@ -55,7 +55,7 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-production}
     volumes:
       - ../backend:/app:ro
-      - ./data:/data
+      - ./data:/app/data
     networks:
       - vacation-network
     healthcheck:
