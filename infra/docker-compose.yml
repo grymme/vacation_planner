@@ -10,100 +10,93 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
+      - caddy_data:/var/lib/caddy/data
+      - caddy_config:/var/lib/caddy/config
+      - ../backend:/app:ro
+      - ./data:/data  # SQLite data directory
     environment:
-      - DOMAIN=${DOMAIN:-vacation.local}
-      - EMAIL=${EMAIL:-admin@example.com}
-      - HTTPS_MODE=${HTTPS_MODE:-lan}
+      - CADDY_DOMAIN=${CADDY_DOMAIN:-localhost}
+      - CADDY_TLS_EMAIL=${CADDY_TLS_EMAIL:-}
+      - CADDY_LOCAL_DOMAIN=localhost
+      - CADDY_TLS_LOCAL_EMAIL=admin@localhost
     networks:
-      - vacation_network
+      - vacation-network
     healthcheck:
-      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-    depends_on:
-      - backend
 
   backend:
     build:
       context: ../backend
-      dockerfile: Dockerfile.backend
-    image: vacation-planner-backend:latest
+      dockerfile: Dockerfile
     container_name: vacation-planner-backend
     restart: unless-stopped
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=sqlite+aiosqlite:///./data/vacation_planner.db
       - JWT_SECRET=${JWT_SECRET}
-      - JWT_ALGORITHM=${JWT_ALGORITHM}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
-      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS}
-      - ARGON2_TIME_COST=${ARGON2_TIME_COST}
-      - ARGON2_MEMORY_COST=${ARGON2_MEMORY_COST}
-      - ARGON2_PARALLELISM=${ARGON2_PARALLELISM}
-      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=15
+      - REFRESH_TOKEN_EXPIRE_DAYS=7
+      - ARGON2_TIME_COST=2
+      - ARGON2_MEMORY_COST=65536
+      - ARGON2_PARALLELISM=4
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME}
-      - ADMIN_LAST_NAME=${ADMIN_LAST_NAME}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - MAIL_MODE=${MAIL_MODE}
-      - MAIL_SMTP_HOST=${MAIL_SMTP_HOST}
-      - MAIL_SMTP_PORT=${MAIL_SMTP_PORT}
-      - MAIL_SMTP_USER=${MAIL_SMTP_USER}
-      - MAIL_SMTP_PASSWORD=${MAIL_SMTP_PASSWORD}
-      - MAIL_FROM=${MAIL_FROM}
+      - ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME:-Admin}
+      - ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-User}
+      - COMPANY_NAME=${COMPANY_NAME:-Default Company}
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:5173","http://localhost"]}
       - ENVIRONMENT=${ENVIRONMENT:-production}
     volumes:
-      - backend_logs:/app/logs
+      - ../backend:/app:ro
+      - ./data:/data  # SQLite data directory
     networks:
-      - vacation_network
-    depends_on:
-      db:
-        condition: service_healthy
+      - vacation-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
 
-  db:
-    image: postgres:15-alpine
-    container_name: vacation-planner-db
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: vacation-planner-frontend
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-vacation_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vacation_password}
-      - POSTGRES_DB=${POSTGRES_DB:-vacation_planner}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - VITE_API_URL=${VITE_API_URL:-http://localhost/api/v1}
+    depends_on:
+      - backend
     networks:
-      - vacation_network
+      - vacation-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vacation_user} -d ${POSTGRES_DB:-vacation_planner}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    command: >
-      postgres
-      -c shared_buffers=256MB
-      -c max_connections=100
-      -c effective_cache_size=512MB
-      -c work_mem=16MB
-      -c maintenance_work_mem=128MB
-      -c fsync=on
-      -c synchronous_commit=off
-      -c full_page_writes=off
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
-  vacation_network:
+  vacation-network:
     driver: bridge
 
 volumes:
   caddy_data:
-  postgres_data:
-  backend_logs:
+    driver: local
+  caddy_config:
+    driver: local
+  data:  # SQLite data volume
+    driver: local
 
 profiles:
-  - lan
-  - public
+  public:
+    services:
+      - caddy
+      - backend
+      - frontend
+  lan:
+    services:
+      - backend
+      - frontend

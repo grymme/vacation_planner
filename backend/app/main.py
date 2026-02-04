@@ -2,6 +2,7 @@
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,8 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.database import init_db, close_db
+from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.csrf import CSRFMiddleware
 from app.routers import auth, users, vacation_requests, admin, manager, exports
 
 # Configure logging
@@ -42,6 +45,12 @@ app = FastAPI(
     docs_url="/docs" if settings.environment == "development" else None,
     redoc_url="/redoc" if settings.environment == "development" else None,
 )
+
+# Rate limiting middleware (applied before other middleware)
+app.add_middleware(RateLimitMiddleware)
+
+# CSRF protection middleware
+app.add_middleware(CSRFMiddleware)
 
 # CORS middleware
 app.add_middleware(
@@ -84,6 +93,7 @@ async def health_check():
     return {
         "status": "healthy" if db_healthy else "degraded",
         "database": "connected" if db_healthy else "disconnected",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 

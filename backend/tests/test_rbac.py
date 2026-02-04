@@ -1,6 +1,6 @@
 """Tests for Role-Based Access Control (RBAC)."""
 import pytest
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from uuid import uuid4
 
 
@@ -54,17 +54,28 @@ class TestAdminEndpoints:
         assert isinstance(data, list)
     
     @pytest.mark.asyncio
-    async def test_admin_can_get_stats(self, client, admin_user, admin_auth_headers):
-        """Test admin can access statistics."""
+    async def test_admin_can_list_companies(self, client, admin_user, admin_auth_headers):
+        """Test admin can list companies."""
         response = await client.get(
-            "/api/v1/admin/stats",
+            "/api/v1/admin/companies",
             headers=admin_auth_headers
         )
         
         assert response.status_code == 200
         data = response.json()
-        assert "total_users" in data
-        assert "pending_requests" in data
+        assert isinstance(data, list)
+    
+    @pytest.mark.asyncio
+    async def test_admin_can_list_functions(self, client, admin_user, admin_auth_headers):
+        """Test admin can list functions."""
+        response = await client.get(
+            "/api/v1/admin/functions",
+            headers=admin_auth_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
     
     @pytest.mark.asyncio
     async def test_admin_can_create_team(self, client, admin_user, admin_auth_headers, test_company):
@@ -117,8 +128,8 @@ class TestVacationRequestRBAC:
     @pytest.mark.asyncio
     async def test_user_can_create_own_request(self, client, regular_user, user_auth_headers):
         """Test user can create their own vacation request."""
-        tomorrow = date.today() + timezone.timedelta(days=1)
-        next_week = date.today() + timezone.timedelta(days=8)
+        tomorrow = date.today() + timedelta(days=1)
+        next_week = date.today() + timedelta(days=8)
         
         response = await client.post(
             "/api/v1/vacation-requests/",
@@ -151,8 +162,8 @@ class TestVacationRequestRBAC:
     async def test_user_cannot_view_others_requests(self, client, regular_user, user_auth_headers, regular_user2, user2_auth_headers):
         """Test user cannot view other users' requests."""
         # Create a request as user2
-        tomorrow = date.today() + timezone.timedelta(days=1)
-        next_week = date.today() + timezone.timedelta(days=8)
+        tomorrow = date.today() + timedelta(days=1)
+        next_week = date.today() + timedelta(days=8)
         
         user2_request = await client.post(
             "/api/v1/vacation-requests/",
@@ -179,7 +190,7 @@ class TestVacationRequestRBAC:
     async def test_manager_can_view_team_requests(self, client, manager_user, manager_auth_headers, regular_user, test_team):
         """Test manager can view requests from their team."""
         response = await client.get(
-            "/api/v1/manager/team-requests",
+            f"/api/v1/manager/team-vacation-requests/{test_team.id}",
             headers=manager_auth_headers
         )
         
@@ -333,7 +344,7 @@ class TestManagerEndpoints:
     async def test_manager_can_view_team_members(self, client, manager_user, manager_auth_headers, test_team):
         """Test manager can view team members."""
         response = await client.get(
-            f"/api/v1/manager/teams/{test_team.id}/members",
+            f"/api/v1/manager/team-members/{test_team.id}",
             headers=manager_auth_headers
         )
         
@@ -344,29 +355,17 @@ class TestManagerEndpoints:
     async def test_user_cannot_view_team_members(self, client, regular_user, user_auth_headers, test_team):
         """Test regular user cannot view team members."""
         response = await client.get(
-            f"/api/v1/manager/teams/{test_team.id}/members",
+            f"/api/v1/manager/team-members/{test_team.id}",
             headers=user_auth_headers
         )
         
         assert response.status_code == 403
     
     @pytest.mark.asyncio
-    async def test_manager_can_view_team_stats(self, client, manager_user, manager_auth_headers, test_team):
-        """Test manager can view team statistics."""
-        response = await client.get(
-            f"/api/v1/manager/teams/{test_team.id}/stats",
-            headers=manager_auth_headers
-        )
-        
-        assert response.status_code == 200
-    
-    @pytest.mark.asyncio
     async def test_manager_can_view_pending_requests(self, client, manager_user, manager_auth_headers, test_team, db_session):
         """Test manager can view pending requests."""
-        from app.models import VacationRequest, VacationStatus
-        
         response = await client.get(
-            f"/api/v1/manager/teams/{test_team.id}/pending",
+            "/api/v1/manager/pending-requests",
             headers=manager_auth_headers
         )
         
@@ -386,7 +385,7 @@ class TestUserEndpoints:
         
         assert response.status_code == 200
         data = response.json()
-        assert data["email"] == "user@test.com"
+        assert data["email"] == regular_user.email
     
     @pytest.mark.asyncio
     async def test_user_can_update_own_profile(self, client, regular_user, user_auth_headers):

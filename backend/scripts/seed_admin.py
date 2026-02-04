@@ -9,13 +9,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import select
 
-from app.database import async_session
+from app.database import async_session, init_db
 from app.models import User, UserRole, Company
 from app.auth import hash_password
 
 
 async def seed_admin():
     """Create initial admin user if it doesn't exist."""
+    # Initialize database (creates tables if they don't exist)
+    await init_db()
+    
     admin_email = os.getenv("ADMIN_EMAIL", "admin@example.com")
     admin_password = os.getenv("ADMIN_PASSWORD", "changeme-in-production!")
     admin_first_name = os.getenv("ADMIN_FIRST_NAME", "Admin")

@@ -1,6 +1,7 @@
 """Authentication utilities with JWT and Argon2id password hashing."""
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
@@ -12,7 +13,7 @@ from argon2.exceptions import VerifyMismatchError, InvalidHash
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.config import settings
 from app.models import User, UserRole
@@ -89,23 +90,26 @@ def create_access_token(user_id: UUID, email: str, role: UserRole, company_id: U
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_refresh_token(user_id: UUID) -> str:
-    """Create a JWT refresh token.
+def create_refresh_token(user_id: UUID) -> tuple[str, str]:
+    """Create a JWT refresh token with unique token ID (jti) for rotation tracking.
     
     Args:
         user_id: The user's UUID.
         
     Returns:
-        The encoded JWT refresh token.
+        Tuple of (refresh_token, token_jti).
     """
+    token_jti = uuid.uuid4()  # Unique token ID for rotation tracking
     expires = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
     payload = {
         "sub": str(user_id),
+        "jti": str(token_jti),  # Token ID for rotation tracking
         "exp": expires,
         "iat": datetime.now(timezone.utc),
         "type": "refresh"
     }
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    refresh_token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return refresh_token, str(token_jti)
 
 
 def decode_token(token: str) -> dict:
@@ -375,5 +379,137 @@ class AuthError(Exception):
         super().__init__(self.message)
 
 
+# =============================================================================
+# Refresh Token Management (Token Rotation)
+# =============================================================================
+async def create_and_store_refresh_token(
+    db: AsyncSession, 
+    user_id: UUID
+) -> tuple[str, str]:
+    """Create and store a refresh token in the database.
+    
+    Implements token rotation: revokes all existing refresh tokens for the user
+    before creating a new one.
+    
+    Args:
+        db: The database session.
+        user_id: The user's UUID.
+        
+    Returns:
+        Tuple of (refresh_token, token_jti).
+    """
+    from app.models import RefreshToken
+    
+    # Create new refresh token with unique jti
+    token_jti = uuid.uuid4()
+    expires = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+    
+    payload = {
+        "sub": str(user_id),
+        "jti": str(token_jti),
+        "exp": expires,
+        "iat": datetime.now(timezone.utc),
+        "type": "refresh"
+    }
+    refresh_token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    
+    # Revoke all existing refresh tokens for this user (token rotation)
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id)
+        .where(RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
+    
+    # Store new refresh token
+    refresh_token_db = RefreshToken(
+        user_id=user_id,
+        token_jti=str(token_jti),
+        expires_at=expires
+    )
+    db.add(refresh_token_db)
+    
+    return refresh_token, str(token_jti)
+
+
+async def revoke_refresh_token(db: AsyncSession, token_jti: str) -> bool:
+    """Revoke a refresh token by its jti.
+    
+    Args:
+        db: The database session.
+        token_jti: The JWT ID of the token to revoke.
+        
+    Returns:
+        True if the token was revoked, False if not found.
+    """
+    from app.models import RefreshToken
+    
+    result = await db.execute(
+        select(RefreshToken).where(RefreshToken.token_jti == token_jti)
+    )
+    token = result.scalar_one_or_none()
+    
+    if token and not token.is_revoked:
+        token.revoked_at = datetime.now(timezone.utc)
+        return True
+    
+    return False
+
+
+async def revoke_all_user_refresh_tokens(db: AsyncSession, user_id: UUID) -> int:
+    """Revoke all refresh tokens for a user (e.g., on password change).
+    
+    Args:
+        db: The database session.
+        user_id: The user's UUID.
+        
+    Returns:
+        Number of tokens revoked.
+    """
+    from app.models import RefreshToken
+    
+    result = await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id)
+        .where(RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
+    return result.rowcount
+
+
+async def validate_refresh_token(db: AsyncSession, refresh_token: str) -> Optional[UUID]:
+    """Validate a refresh token against the database.
+    
+    Args:
+        db: The database session.
+        refresh_token: The refresh token string.
+        
+    Returns:
+        User ID if valid, None otherwise.
+    """
+    from app.models import RefreshToken
+    
+    payload = decode_token(refresh_token)
+    
+    if payload.get("type") != "refresh":
+        return None
+    
+    token_jti = payload.get("jti")
+    user_id = payload.get("sub")
+    
+    if not token_jti or not user_id:
+        return None
+    
+    result = await db.execute(
+        select(RefreshToken).where(RefreshToken.token_jti == token_jti)
+    )
+    token = result.scalar_one_or_none()
+    
+    if not token or token.is_revoked or token.is_expired:
+        return None
+    
+    return UUID(user_id)
+
+
 # Re-export for convenience
-from app.models import InviteToken, PasswordResetToken
+from app.models import InviteToken, PasswordResetToken, RefreshToken

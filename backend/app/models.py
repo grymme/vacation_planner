@@ -158,6 +158,7 @@ class User(Base):
     audit_logs: Mapped[list["AuditLog"]] = relationship("AuditLog", back_populates="actor")
     invite_tokens: Mapped[list["InviteToken"]] = relationship("InviteToken", back_populates="user", cascade="all, delete-orphan", foreign_keys="InviteToken.user_id")
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     
     # Indexes
     __table_args__ = (
@@ -339,3 +340,42 @@ class PasswordResetToken(Base):
     
     # Indexes
     __table_args__ = (Index("idx_pw_reset_token", "token", unique=True),)
+
+
+# =============================================================================
+# Refresh Token Model - for token rotation
+# =============================================================================
+class RefreshToken(Base):
+    """Refresh token model for secure session management with token rotation.
+    
+    Tracks all issued refresh tokens to enable revocation and rotation.
+    When a new refresh token is issued, the old one is revoked.
+    """
+    __tablename__ = "refresh_tokens"
+    
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_jti: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)  # JWT ID for rotation tracking
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="refresh_tokens")
+    
+    # Indexes
+    __table_args__ = (
+        Index("idx_refresh_tokens_user", "user_id"),
+        Index("idx_refresh_tokens_jti", "token_jti", unique=True),
+        Index("idx_refresh_tokens_expires", "expires_at"),
+    )
+    
+    @property
+    def is_revoked(self) -> bool:
+        """Check if the token has been revoked."""
+        return self.revoked_at is not None
+    
+    @property
+    def is_expired(self) -> bool:
+        """Check if the token has expired."""
+        return datetime.now(timezone.utc) > self.expires_at

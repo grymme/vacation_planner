@@ -1,4 +1,5 @@
 """Alembic migration environment configuration."""
+import os
 from logging.config import fileConfig
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -7,6 +8,9 @@ from alembic import context
 
 # this is the Alembic Config object
 config = context.config
+
+# Set the SQLite URL from environment variable
+config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/vacation_planner.db"))
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:

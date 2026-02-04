@@ -8,8 +8,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
-    # Database
-    database_url: str = "postgresql+asyncpg://vacation_user:vacation_password@db:5432/vacation_planner"
+    # Database (SQLite for Raspberry Pi 5)
+    database_url: str = "sqlite+aiosqlite:///./data/vacation_planner.db"
+    sqlite_data_path: str = "./data"
     database_echo: bool = False
     
     # JWT Authentication

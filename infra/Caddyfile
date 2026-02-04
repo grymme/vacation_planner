@@ -1,17 +1,13 @@
 {
     admin off
-    auto_https off
-    log {
-        level INFO
-        format json
+    storage file_system {
+        root /var/lib/caddy/data
     }
 }
 
-{$DOMAIN:vacation.local} {
-    tls {$EMAIL:admin@example.com} {
-        if {$HTTPS_MODE} == "public" {
-            issuer acme
-        }
+{$CADDY_DOMAIN:-$CADDY_LOCAL_DOMAIN} {
+    tls {$CADDY_TLS_EMAIL:-$CADDY_TLS_LOCAL_EMAIL} {
+        on_demand
     }
 
     # Security headers
@@ -19,104 +15,85 @@
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "SAMEORIGIN"
-        X-XSS-Protection "1; mode=block"
+        X-Robots-Tag "noindex, nofollow"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:;"
         Referrer-Policy "strict-origin-when-cross-origin"
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://{$DOMAIN:vacation.local};"
         Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        -Server
     }
 
-    # Rate limiting (basic)
-    rate_limit {
-        zone static_files 10mb 1h
+    # Rate limiting for auth endpoints
+    @auth {
+        path /api/v1/auth/*
+    }
+    rate-limit {
+        zone auth_limit {
+            size 100
+            expire 1m
+        }
+        match @auth
+        all 10r/m
     }
 
-    # Frontend (static files in production)
-    @static {
-        path /static/*
-        path /assets/*
-    }
-    reverse_proxy @static localhost:3000 {
-        header_down Cache-Control "public, max-age=31536000"
+    @api {
+        path /api/*
     }
 
-    # API backend
-    @api path /api/*
-    reverse_proxy @api localhost:8000 {
-        header_up Host "localhost:8000"
-        header_up X-Real-IP "{$REMOTE_ADDR}"
-        header_up X-Forwarded-For "{$REMOTE_ADDR}"
-        header_up X-Forwarded-Proto "{$PROTO}"
+    reverse_proxy @api backend:8000 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
     }
 
-    # Auth endpoints (no CSRF protection needed for HTTP-only cookies)
-    @auth path /auth/*
-    reverse_proxy @auth localhost:8000 {
-        header_up Host "localhost:8000"
-        header_up X-Real-IP "{$REMOTE_ADDR}"
-        header_up X-Forwarded-For "{$REMOTE_ADDR}"
-        header_up X-Forwarded-Proto "{$PROTO}"
+    @frontend {
+        path /*
     }
 
-    # Health check
-    @health path /health
-    reverse_proxy @health localhost:8000 {
-        header_up Host "localhost:8000"
+    reverse_proxy @frontend frontend:3000 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
     }
 
-    # Root - serve frontend SPA
-    @spa {
-        not path /api/*
-        not path /auth/*
-        not path /health/*
-        not path /.well-known/*
-    }
-    reverse_proxy @spa localhost:3000 {
-        header_up Host "localhost:3000"
+    @health {
+        path /health
     }
 
-    # HTTP to HTTPS redirect (only in public mode)
-    @http {
-        protocol http
-    }
-    redir @http https://{host}{uri} 301 {
-        if {$HTTPS_MODE} == "public"
-    }
+    respond @health "OK" 200
 }
 
-# LAN mode - self-signed certificates
-http://{$DOMAIN:vacation.local} {
-    tls internal {
-        on_demand
-    }
-
+# LAN profile (internal/self-signed)
+:80, :8080 {
     header {
+        Strict-Transport-Security "max-age=0"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "SAMEORIGIN"
-        X-XSS-Protection "1; mode=block"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
     }
 
-    @api path /api/*
-    reverse_proxy @api localhost:8000 {
-        header_up Host "localhost:8000"
+    @api {
+        path /api/*
     }
 
-    @auth path /auth/*
-    reverse_proxy @auth localhost:8000 {
-        header_up Host "localhost:8000"
+    reverse_proxy @api backend:8000 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
     }
 
-    @health path /health
-    reverse_proxy @health localhost:8000 {
-        header_up Host "localhost:8000"
+    @frontend {
+        path /*
     }
 
-    @spa {
-        not path /api/*
-        not path /auth/*
-        not path /health/*
-        not path /.well-known/*
+    reverse_proxy @frontend frontend:3000 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
     }
-    reverse_proxy @spa localhost:3000 {
-        header_up Host "localhost:3000"
+
+    @health {
+        path /health
     }
+
+    respond @health "OK" 200
 }

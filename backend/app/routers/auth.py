@@ -13,12 +13,16 @@ from app.auth import (
     create_access_token,
     create_refresh_token,
     create_tokens,
+    create_and_store_refresh_token,
     decode_token,
     verify_password,
     hash_password,
     get_current_user,
     require_admin,
+    validate_refresh_token,
+    revoke_all_user_refresh_tokens,
 )
+from app.middleware.rate_limit import account_lockout_store
 from app.schemas import (
     Token,
     LoginRequest,
@@ -40,23 +44,35 @@ async def login(
     db: AsyncSession = Depends(get_db)
 ):
     """Login with email and password. Returns access + refresh token (refresh in HTTP-only cookie)."""
+    # Check account lockout
+    is_allowed, error_message = await account_lockout_store.check_login(login_data.email)
+    if not is_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=error_message
+        )
+    
     # Find user
     result = await db.execute(select(User).where(User.email == login_data.email))
     user = result.scalar_one_or_none()
     
     if not user:
+        # Record failure for non-existent user (prevent user enumeration)
+        await account_lockout_store.record_failure(login_data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
     
     if not user.hashed_password:
+        await account_lockout_store.record_failure(login_data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account not activated. Please set password via invite link."
         )
     
     if not user.is_active:
+        await account_lockout_store.record_failure(login_data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account is deactivated"
@@ -64,14 +80,18 @@ async def login(
     
     # Verify password
     if not verify_password(login_data.password, user.hashed_password):
+        await account_lockout_store.record_failure(login_data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
     
-    # Create tokens
+    # Clear failed attempts on successful login
+    account_lockout_store.record_success(login_data.email)
+    
+    # Create tokens with token rotation
     access_token = create_access_token(user.id, user.email, user.role, user.company_id)
-    refresh_token = create_refresh_token(user.id)
+    refresh_token, token_jti = await create_and_store_refresh_token(db, user.id)
     
     # Set refresh token in HTTP-only secure cookie
     response.set_cookie(
@@ -105,7 +125,7 @@ async def refresh_token(
     response: Response,
     db: AsyncSession = Depends(get_db)
 ):
-    """Refresh access token using HTTP-only refresh cookie."""
+    """Refresh access token using HTTP-only refresh cookie with token rotation."""
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         raise HTTPException(
@@ -113,9 +133,13 @@ async def refresh_token(
             detail="No refresh token"
         )
     
-    # Verify refresh token
-    from app.auth import verify_refresh_token
-    user_id = verify_refresh_token(refresh_token)
+    # Validate refresh token against database
+    user_id = await validate_refresh_token(db, refresh_token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or revoked refresh token"
+        )
     
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -126,9 +150,9 @@ async def refresh_token(
             detail="Invalid user"
         )
     
-    # Create new tokens
+    # Create new tokens (this will revoke the old refresh token)
     access_token = create_access_token(user.id, user.email, user.role, user.company_id)
-    new_refresh_token = create_refresh_token(user.id)
+    new_refresh_token, new_token_jti = await create_and_store_refresh_token(db, user.id)
     
     # Update cookie
     response.set_cookie(
@@ -172,24 +196,17 @@ async def set_password(
             detail="Invalid or expired invite token"
         )
     
-    # Validate password
-    if len(request.password) < 8:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 8 characters"
-        )
-    
-    if request.password != request.confirm_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Passwords do not match"
-        )
+    # Password validation is now handled by the schema validator
+    # which enforces minimum 12 chars with complexity requirements
     
     # Hash password and update user
     hashed = hash_password(request.password)
     invite.user.hashed_password = hashed
     invite.user.is_active = True
     invite.used_at = datetime.now(timezone.utc)
+    
+    # Revoke all existing refresh tokens for security
+    await revoke_all_user_refresh_tokens(db, invite.user.id)
     
     await db.commit()
     await db.refresh(invite.user)
@@ -241,21 +258,15 @@ async def password_reset_confirm(
             detail="Invalid or expired reset token"
         )
     
-    if len(request.password) < 8:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 8 characters"
-        )
-    
-    if request.password != request.confirm_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Passwords do not match"
-        )
+    # Password validation is now handled by the schema validator
+    # which enforces minimum 12 chars with complexity requirements
     
     # Update password
     reset.user.hashed_password = hash_password(request.password)
     reset.used_at = datetime.now(timezone.utc)
+    
+    # Revoke all existing refresh tokens for security
+    await revoke_all_user_refresh_tokens(db, reset.user.id)
     
     await db.commit()
     

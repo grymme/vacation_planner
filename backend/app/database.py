@@ -1,10 +1,12 @@
 """Database connection and session management."""
 import logging
+import os
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import StaticPool
 
 from app.config import settings
 
@@ -16,13 +18,15 @@ class Base(DeclarativeBase):
     pass
 
 
-# Create async engine for PostgreSQL
+# Get database URL from environment or use default
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/vacation_planner.db")
+
+# Create async engine for SQLite
 engine = create_async_engine(
-    settings.database_url,
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
     echo=settings.database_echo,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
 )
 
 # Session factory
