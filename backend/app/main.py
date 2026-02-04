@@ -105,3 +105,15 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs" if settings.environment == "development" else None,
     }
+
+
+# API v2 endpoint - returns deprecation notice for v2
+@app.get("/api/v2", tags=["API v2"])
+async def api_v2():
+    """API v2 endpoint - returns deprecation notice."""
+    return {
+        "message": "API v2 is deprecated",
+        "detail": "The v2 API endpoints are no longer supported. Please migrate to /api/v1 for all API requests.",
+        "deprecated_since": "2024-01-01",
+        "migration_guide": "Update your API client to use /api/v1 prefix instead of /api/v2",
+    }

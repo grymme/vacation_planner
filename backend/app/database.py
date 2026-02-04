@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import StaticPool
+from sqlalchemy import event
 
 from app.config import settings
 
@@ -37,6 +38,22 @@ async_session_maker = async_sessionmaker(
     autocommit=False,
     autoflush=False,
 )
+
+
+@event.listens_for(engine.sync_engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Set SQLite PRAGMA optimizations on each new connection."""
+    cursor = dbapi_connection.cursor()
+    # Enable WAL mode for better concurrent read/write performance
+    cursor.execute("PRAGMA journal_mode=WAL")
+    # Set cache size to 64MB (negative value = kilobytes)
+    cursor.execute("PRAGMA cache_size=-64000")
+    # Enable foreign key constraints
+    cursor.execute("PRAGMA foreign_keys=ON")
+    # Set synchronous mode to NORMAL for better performance while maintaining durability
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
+    logger.info("SQLite PRAGMA optimizations applied: WAL mode, 64MB cache, foreign keys ON, synchronous=NORMAL")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

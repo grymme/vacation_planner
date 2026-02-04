@@ -65,8 +65,36 @@ async def client(db_session: AsyncSession):
     
     app.dependency_overrides[get_db] = override_get_db
     
+    # Create a test app without middleware for proper testing
+    from fastapi import FastAPI
+    from app.routers import auth, users, vacation_requests, admin, manager, exports
+    
+    test_app = FastAPI(
+        title="Vacation Planner API (Test)",
+        version="1.0.0",
+    )
+    
+    # Include all routers
+    test_app.include_router(auth.router, prefix="/api/v1")
+    test_app.include_router(users.router, prefix="/api/v1")
+    test_app.include_router(vacation_requests.router, prefix="/api/v1")
+    test_app.include_router(admin.router, prefix="/api/v1")
+    test_app.include_router(manager.router, prefix="/api/v1")
+    test_app.include_router(exports.router, prefix="/api/v1")
+    
+    # Add health check
+    @test_app.get("/health")
+    async def health_check():
+        return {"status": "healthy"}
+    
+    @test_app.get("/")
+    async def root():
+        return {"name": "Vacation Planner API (Test)"}
+    
+    test_app.dependency_overrides[get_db] = override_get_db
+    
     async with AsyncClient(
-        transport=ASGITransport(app=app),
+        transport=ASGITransport(app=test_app),
         base_url="http://test"
     ) as ac:
         yield ac
@@ -87,6 +115,16 @@ async def test_company(db_session: AsyncSession) -> Company:
     return company
 
 
+@pytest_asyncio.fixture
+async def test_company2(db_session: AsyncSession) -> Company:
+    """Create a second test company for isolation testing."""
+    company = Company(name=f"Test Company 2 {uuid4()}")
+    db_session.add(company)
+    await db_session.commit()
+    await db_session.refresh(company)
+    return company
+
+
 # =============================================================================
 # Function Fixtures
 # =============================================================================
@@ -94,6 +132,16 @@ async def test_company(db_session: AsyncSession) -> Company:
 async def test_function(db_session: AsyncSession, test_company: Company) -> Function:
     """Create a test function/department."""
     func = Function(name="Test Function", company_id=test_company.id)
+    db_session.add(func)
+    await db_session.commit()
+    await db_session.refresh(func)
+    return func
+
+
+@pytest_asyncio.fixture
+async def test_function2(db_session: AsyncSession, test_company: Company) -> Function:
+    """Create a second test function/department."""
+    func = Function(name="Test Function 2", company_id=test_company.id)
     db_session.add(func)
     await db_session.commit()
     await db_session.refresh(func)
@@ -241,6 +289,24 @@ async def regular_user2(db_session: AsyncSession, test_company: Company, test_te
 
 
 @pytest_asyncio.fixture
+async def user_from_other_company(db_session: AsyncSession, test_company2: Company) -> User:
+    """Create a user from a different company for isolation testing."""
+    user = User(
+        email=f"other_company_{uuid4().hex[:8]}@test.com",
+        hashed_password=hash_password("otherpassword123"),
+        first_name="Other",
+        last_name="Company",
+        role=UserRole.USER,
+        company_id=test_company2.id,
+        is_active=True
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture
 async def inactive_user(db_session: AsyncSession, test_company: Company) -> User:
     """Create an inactive user."""
     user = User(
@@ -261,6 +327,8 @@ async def inactive_user(db_session: AsyncSession, test_company: Company) -> User
 @pytest_asyncio.fixture
 async def invited_user(db_session: AsyncSession, test_company: Company, admin_user: User) -> User:
     """Create a user invited but not yet activated."""
+    # Use unique token for each test
+    unique_token = f"test-invite-token-{uuid4().hex[:8]}"
     user = User(
         email=f"invited_{uuid4().hex[:8]}@test.com",
         hashed_password=None,
@@ -275,7 +343,7 @@ async def invited_user(db_session: AsyncSession, test_company: Company, admin_us
     
     # Create invite token
     invite_token = InviteToken(
-        token="test-invite-token",
+        token=unique_token,
         user_id=user.id,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         created_by=admin_user.id
@@ -362,6 +430,28 @@ async def vacation_request_rejected(
     return vr
 
 
+@pytest_asyncio.fixture
+async def vacation_request_cancelled(
+    db_session: AsyncSession, 
+    regular_user: User, 
+    test_team: Team
+) -> VacationRequest:
+    """Create a cancelled vacation request."""
+    vr = VacationRequest(
+        user_id=regular_user.id,
+        team_id=test_team.id,
+        start_date=datetime(2024, 9, 1, tzinfo=timezone.utc).date(),
+        end_date=datetime(2024, 9, 3, tzinfo=timezone.utc).date(),
+        vacation_type="personal",
+        status=VacationStatus.CANCELLED,
+        reason="Plans changed"
+    )
+    db_session.add(vr)
+    await db_session.commit()
+    await db_session.refresh(vr)
+    return vr
+
+
 # =============================================================================
 # Authentication Header Fixtures
 # =============================================================================
@@ -409,5 +499,17 @@ async def user2_auth_headers(regular_user2: User) -> dict:
         email=regular_user2.email,
         role=regular_user2.role,
         company_id=regular_user2.company_id
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def other_company_auth_headers(user_from_other_company: User) -> dict:
+    """Create authorization headers for user from other company."""
+    token = create_access_token(
+        user_id=user_from_other_company.id,
+        email=user_from_other_company.email,
+        role=user_from_other_company.role,
+        company_id=user_from_other_company.company_id
     )
     return {"Authorization": f"Bearer {token}"}

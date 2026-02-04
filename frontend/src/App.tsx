@@ -1,20 +1,32 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import Login from './components/Login';
-import Calendar from './components/Calendar';
 import Header from './components/Header';
-import ApprovalsPage from './pages/ApprovalsPage';
-import TeamsPage from './pages/TeamsPage';
-import AdminPage from './pages/AdminPage';
 import './App.css';
+
+// Lazy load components for code splitting
+const Login = lazy(() => import('./components/Login'));
+const Calendar = lazy(() => import('./components/Calendar'));
+const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage'));
+const TeamsPage = lazy(() => import('./pages/TeamsPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+
+// Loading fallback component
+function Loading() {
+  return (
+    <div className="loading-container">
+      <div className="loading-spinner"></div>
+      <p>Loading...</p>
+    </div>
+  );
+}
 
 // Protected Route wrapper
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
   const { user, isLoading } = useAuth();
   
   if (isLoading) {
-    return <div className="loading">Loading...</div>;
+    return <Loading />;
   }
   
   if (!user) {
@@ -33,7 +45,7 @@ function AppLayout() {
   const { user, isLoading } = useAuth();
   
   if (isLoading) {
-    return <div className="loading">Loading...</div>;
+    return <Loading />;
   }
   
   if (!user) {
@@ -54,39 +66,41 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/set-password" element={<Login />} />
-          <Route path="/reset-password" element={<Login />} />
-          
-          <Route element={<AppLayout />}>
-            <Route path="/" element={
-              <ProtectedRoute>
-                <Calendar viewMode="user" />
-              </ProtectedRoute>
-            } />
+        <Suspense fallback={<Loading />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/set-password" element={<Login />} />
+            <Route path="/reset-password" element={<Login />} />
             
-            <Route path="/approvals" element={
-              <ProtectedRoute roles={['manager', 'admin']}>
-                <ApprovalsPage />
-              </ProtectedRoute>
-            } />
+            <Route element={<AppLayout />}>
+              <Route path="/" element={
+                <ProtectedRoute>
+                  <Calendar viewMode="user" />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/approvals" element={
+                <ProtectedRoute roles={['manager', 'admin']}>
+                  <ApprovalsPage />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/teams" element={
+                <ProtectedRoute roles={['manager', 'admin']}>
+                  <TeamsPage />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/admin" element={
+                <ProtectedRoute roles={['admin']}>
+                  <AdminPage />
+                </ProtectedRoute>
+              } />
+            </Route>
             
-            <Route path="/teams" element={
-              <ProtectedRoute roles={['manager', 'admin']}>
-                <TeamsPage />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/admin" element={
-              <ProtectedRoute roles={['admin']}>
-                <AdminPage />
-              </ProtectedRoute>
-            } />
-          </Route>
-          
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </AuthProvider>
   );
