@@ -55,20 +55,20 @@ fi
 echo "[3/6] Building Docker containers..."
 if [ "$COMPOSE_DIR" = "infra" ]; then
     cd infra
-    docker compose -f ../docker-compose.yml build
+    docker-compose -f ../docker-compose.yml build
     cd "$ORIGINAL_DIR"
 else
-    docker compose build
+    docker-compose build
 fi
 
 # Step 4: Start services
 echo "[4/6] Starting services..."
 if [ "$COMPOSE_DIR" = "infra" ]; then
     cd infra
-    docker compose -f ../docker-compose.yml --profile "$PROFILE" up -d
+    docker-compose -f ../docker-compose.yml --profile "$PROFILE" up -d
     cd "$ORIGINAL_DIR"
 else
-    docker compose --profile "$PROFILE" up -d
+    docker-compose --profile "$PROFILE" up -d
 fi
 
 # Step 5: Wait for backend
@@ -89,12 +89,12 @@ done
 echo "[6/6] Initializing database..."
 if [ "$COMPOSE_DIR" = "infra" ]; then
     cd infra
-    docker compose -f ../docker-compose.yml exec -T backend alembic upgrade head 2>/dev/null || echo "Migrations may already be applied"
-    docker compose -f ../docker-compose.yml exec -T backend python scripts/seed_admin.py 2>/dev/null || echo "Admin user may already exist"
+    docker-compose -f ../docker-compose.yml exec -T backend alembic upgrade head 2>/dev/null || echo "Migrations may already be applied"
+    docker-compose -f ../docker-compose.yml exec -T backend python scripts/seed_admin.py 2>/dev/null || echo "Admin user may already exist"
     cd "$ORIGINAL_DIR"
 else
-    docker compose exec -T backend alembic upgrade head 2>/dev/null || echo "Migrations may already be applied"
-    docker compose exec -T backend python scripts/seed_admin.py 2>/dev/null || echo "Admin user may already exist"
+    docker-compose exec -T backend alembic upgrade head 2>/dev/null || echo "Migrations may already be applied"
+    docker-compose exec -T backend python scripts/seed_admin.py 2>/dev/null || echo "Admin user may already exist"
 fi
 
 echo ""
@@ -115,12 +115,12 @@ echo "IMPORTANT: Change the admin password after first login!"
 echo ""
 echo "Useful commands:"
 if [ "$COMPOSE_DIR" = "infra" ]; then
-    echo "  View logs:  cd infra && docker compose -f ../docker-compose.yml logs -f"
-    echo "  Restart:    cd infra && docker compose -f ../docker-compose.yml restart"
-    echo "  Stop:       cd infra && docker compose -f ../docker-compose.yml down"
+    echo "  View logs:  cd infra && docker-compose -f ../docker-compose.yml logs -f"
+    echo "  Restart:    cd infra && docker-compose -f ../docker-compose.yml restart"
+    echo "  Stop:       cd infra && docker-compose -f ../docker-compose.yml down"
 else
-    echo "  View logs:  docker compose logs -f"
-    echo "  Restart:    docker compose restart"
-    echo "  Stop:       docker compose down"
+    echo "  View logs:  docker-compose logs -f"
+    echo "  Restart:    docker-compose restart"
+    echo "  Stop:       docker-compose down"
 fi
 echo "=========================================="
