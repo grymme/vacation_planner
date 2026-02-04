@@ -30,7 +30,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         "/api/v1/auth/password-reset-confirm",
     }
     
-    def __init__(self):
+    def __init__(self, app):
+        super().__init__(app)
         self._allowed_origins: Optional[list[str]] = None
     
     @property

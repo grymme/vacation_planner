@@ -103,7 +103,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         "/api/v1/auth/password-reset-request": 5,
     }
     
-    def __init__(self):
+    def __init__(self, app):
+        super().__init__(app)
         self._request_counts: dict[str, list[float]] = defaultdict(list)
     
     async def dispatch(self, request: Request, call_next):
