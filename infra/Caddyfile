@@ -22,19 +22,6 @@
         -Server
     }
 
-    # Rate limiting for auth endpoints
-    @auth {
-        path /api/v1/auth/*
-    }
-    rate-limit {
-        zone auth_limit {
-            size 100
-            expire 1m
-        }
-        match @auth
-        all 10r/m
-    }
-
     @api {
         path /api/*
     }
