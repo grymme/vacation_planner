@@ -1,5 +1,9 @@
 version: '3.8'
 
+# Base configuration - all services included
+# Use 'docker-compose -f docker-compose.yml -f docker-compose.lan.yml up' for LAN mode
+# Use 'docker-compose -f docker-compose.yml -f docker-compose.public.yml up' for public mode
+
 services:
   caddy:
     image: caddy:2.7-alpine
@@ -13,7 +17,7 @@ services:
       - caddy_data:/var/lib/caddy/data
       - caddy_config:/var/lib/caddy/config
       - ../backend:/app:ro
-      - ./data:/data  # SQLite data directory
+      - ./data:/data
     environment:
       - CADDY_DOMAIN=${CADDY_DOMAIN:-localhost}
       - CADDY_TLS_EMAIL=${CADDY_TLS_EMAIL:-}
@@ -51,7 +55,7 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-production}
     volumes:
       - ../backend:/app:ro
-      - ./data:/data  # SQLite data directory
+      - ./data:/data
     networks:
       - vacation-network
     healthcheck:
@@ -87,16 +91,6 @@ volumes:
     driver: local
   caddy_config:
     driver: local
-  data:  # SQLite data volume
+  data:
     driver: local
 
-profiles:
-  public:
-    services:
-      - caddy
-      - backend
-      - frontend
-  lan:
-    services:
-      - backend
-      - frontend

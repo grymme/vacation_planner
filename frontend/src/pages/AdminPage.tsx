@@ -222,9 +222,9 @@ export default function AdminPage() {
                 <label>Company</label>
                 <select
                   value={inviteForm.company_id}
-                  onChange={(e) => setInviteForm({ ...inviteForm, company_id:                  required
-                e.target.value })}
- >
+                  onChange={(e) => setInviteForm({ ...inviteForm, company_id: e.target.value })}
+                  required
+                >
                   <option value="">Select Company</option>
                   {companies.map(company => (
                     <option key={company.id} value={company.id}>{company.name}</option>

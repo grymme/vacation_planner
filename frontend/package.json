@@ -16,8 +16,7 @@
     "@fullcalendar/timegrid": "^6.1.10",
     "@fullcalendar/interaction": "^6.1.10",
     "axios": "^1.6.5",
-    "react-router-dom": "^6.21.3",
-    "html-to-image": "^1.11.11"
+    "react-router-dom": "^6.21.3"
   },
   "devDependencies": {
     "@types/react": "^18.2.48",

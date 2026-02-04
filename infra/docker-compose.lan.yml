@@ -1,0 +1,14 @@
+# LAN mode - No Caddy, direct access to backend/frontend
+version: '3.8'
+
+services:
+  backend:
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - CORS_ORIGINS=["http://semester.westermo.com","http://localhost:5173","http://localhost"]
+
+  frontend:
+    ports:
+      - "3000:3000"

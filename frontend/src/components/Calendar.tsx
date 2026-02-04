@@ -3,8 +3,9 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { vacationApi, VacationRequest, User, useAuth } from '../api/vacation';
+import { vacationApi, UserResponse, VacationRequest } from '../api/vacation';
 import { teamsApi } from '../api/vacation';
+import { useAuth } from '../context/AuthContext';
 import ExportPanel from './ExportPanel';
 import './Calendar.css';
 
@@ -144,39 +145,40 @@ export default function Calendar({ onRequestCreate, viewMode = 'user' }: Calenda
 
   return (
     <div className="calendar-wrapper">
-      <ExportPanel onExportPNG={fetchData} />
+      <ExportPanel />
       <div id="calendar-container" className="calendar-container">
         {isLoading ? (
-        <div className="calendar-loading">Loading calendar...</div>
-      ) : (
-        <>
-          <FullCalendar
-            ref={calendarRef}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-            initialView="dayGridMonth"
-            headerToolbar={{
-              left: 'prev,next today',
-              center: 'title',
-              right: 'dayGridMonth,timeGridWeek,timeGridDay'
-            }}
-            selectable={viewMode === 'user'}
-            selectMirror={true}
-            dayMaxEvents={true}
-            events={events}
-            select={handleDateSelect}
-            eventClick={handleEventClick}
-            height="auto"
-          />
-          
-          {/* Legend */}
-          <div className="calendar-legend">
-            <span className="legend-item"><span className="legend-color approved"></span> Approved</span>
-            <span className="legend-item"><span className="legend-color pending"></span> Pending</span>
-            <span className="legend-item"><span className="legend-color rejected"></span> Rejected</span>
-            <span className="legend-item"><span className="legend-color cancelled"></span> Cancelled</span>
-          </div>
-        </>
-      )}
+          <div className="calendar-loading">Loading calendar...</div>
+        ) : (
+          <>
+            <FullCalendar
+              ref={calendarRef}
+              plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+              initialView="dayGridMonth"
+              headerToolbar={{
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+              }}
+              selectable={viewMode === 'user'}
+              selectMirror={true}
+              dayMaxEvents={true}
+              events={events}
+              select={handleDateSelect}
+              eventClick={handleEventClick}
+              height="auto"
+            />
+            
+            {/* Legend */}
+            <div className="calendar-legend">
+              <span className="legend-item"><span className="legend-color approved"></span> Approved</span>
+              <span className="legend-item"><span className="legend-color pending"></span> Pending</span>
+              <span className="legend-item"><span className="legend-color rejected"></span> Rejected</span>
+              <span className="legend-item"><span className="legend-color cancelled"></span> Cancelled</span>
+            </div>
+          </>
+        )}
+      </div>
       
       {/* Create/View Request Modal */}
       {showModal && (

@@ -45,6 +45,9 @@ export interface UserResponse {
   function?: FunctionResponse;
 }
 
+// User alias for convenience
+export type User = UserResponse;
+
 export interface TeamResponse {
   id: string;
   company_id: string;
@@ -161,7 +164,6 @@ export const adminApi = {
 
 export default api;
 
-// Export API
 export const exportApi = {
   exportCSV: (params: {
     start_date?: string;
@@ -211,22 +213,5 @@ export const exportApi = {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  },
-  
-  exportPNG: (elementId: string, filename: string) => {
-    return import('html-to-image').then(htmlToImage => {
-      const element = document.getElementById(elementId);
-      if (!element) throw new Error('Element not found');
-      
-      return htmlToImage.toPng(element, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2
-      }).then((dataUrl: string) => {
-        const link = document.createElement('a');
-        link.download = `${filename}_${new Date().toISOString().split('T')[0]}.png`;
-        link.href = dataUrl;
-        link.click();
-      });
-    });
   }
 };

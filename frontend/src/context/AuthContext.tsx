@@ -1,18 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
-
-interface User {
-  id: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  role: 'admin' | 'manager' | 'user';
-  company_id: string;
-  is_active: boolean;
-}
+import { UserResponse } from '../api/vacation';
 
 interface AuthContextType {
-  user: User | null;
+  user: UserResponse | null;
   accessToken: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -27,7 +18,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserResponse | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 

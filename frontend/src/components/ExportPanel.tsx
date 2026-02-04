@@ -2,11 +2,7 @@ import React, { useState } from 'react';
 import { exportApi } from '../api/vacation';
 import './ExportPanel.css';
 
-interface ExportPanelProps {
-  onExportPNG?: () => void;
-}
-
-export default function ExportPanel({ onExportPNG }: ExportPanelProps) {
+export default function ExportPanel() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [status, setStatus] = useState('');
@@ -39,19 +35,6 @@ export default function ExportPanel({ onExportPNG }: ExportPanelProps) {
     } catch (error) {
       console.error('XLSX export failed:', error);
       alert('Failed to export XLSX');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const handleExportPNG = async () => {
-    setIsExporting(true);
-    try {
-      await exportApi.exportPNG('calendar-container', 'vacation_calendar');
-      onExportPNG?.();
-    } catch (error) {
-      console.error('PNG export failed:', error);
-      alert('Failed to export PNG');
     } finally {
       setIsExporting(false);
     }
@@ -96,9 +79,6 @@ export default function ExportPanel({ onExportPNG }: ExportPanelProps) {
         </button>
         <button onClick={handleExportXLSX} disabled={isExporting} className="btn btn-outline">
           📊 Export XLSX
-        </button>
-        <button onClick={handleExportPNG} disabled={isExporting} className="btn btn-outline">
-          🖼️ Export PNG
         </button>
       </div>
     </div>
