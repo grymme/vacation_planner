@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { vacationBalanceApi, VacationBalance } from '../api/vacation';
+import { vacationBalanceApi, type VacationBalance } from '../api/vacation';
 import './VacationBalance.css';
 
 export const VacationBalance: React.FC = () => {
