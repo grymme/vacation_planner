@@ -5,10 +5,8 @@
     }
 }
 
-{$CADDY_DOMAIN:-$CADDY_LOCAL_DOMAIN} {
-    tls {$CADDY_TLS_EMAIL:-$CADDY_TLS_LOCAL_EMAIL} {
-        on_demand
-    }
+http://{$CADDY_DOMAIN:-$CADDY_LOCAL_DOMAIN} {
+    # TLS disabled - serving over HTTP only
 
     # Security headers
     header {

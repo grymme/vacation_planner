@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware import Middleware
 
 from app.config import settings
 from app.database import init_db, close_db
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Database connections closed")
 
 
-# Create FastAPI application
+# Create FastAPI application with middleware
 app = FastAPI(
     title="Vacation Planner API",
     description="A production-grade vacation planning system with RBAC",
@@ -44,15 +45,11 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if settings.environment == "development" else None,
     redoc_url="/redoc" if settings.environment == "development" else None,
+    middleware=[
+        Middleware(RateLimitMiddleware),
+        Middleware(CSRFMiddleware),
+    ],
 )
-
-# Rate limiting middleware (applied before other middleware)
-app.add_middleware(RateLimitMiddleware)
-
-# CSRF protection middleware
-app.add_middleware(CSRFMiddleware)
-
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

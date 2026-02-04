@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import select
 
-from app.database import async_session, init_db
+from app.database import async_session_maker, init_db
 from app.models import User, UserRole, Company
 from app.auth import hash_password
 
@@ -25,7 +25,7 @@ async def seed_admin():
     admin_last_name = os.getenv("ADMIN_LAST_NAME", "User")
     company_name = os.getenv("COMPANY_NAME", "Default Company")
     
-    async with async_session() as db:
+    async with async_session_maker() as db:
         # Check if admin already exists
         result = await db.execute(select(User).where(User.email == admin_email))
         if result.scalar_one_or_none():

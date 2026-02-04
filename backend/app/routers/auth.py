@@ -58,21 +58,21 @@ async def login(
     
     if not user:
         # Record failure for non-existent user (prevent user enumeration)
-        await account_lockout_store.record_failure(login_data.email)
+        account_lockout_store.record_failure(login_data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
     
     if not user.hashed_password:
-        await account_lockout_store.record_failure(login_data.email)
+        account_lockout_store.record_failure(login_data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account not activated. Please set password via invite link."
         )
     
     if not user.is_active:
-        await account_lockout_store.record_failure(login_data.email)
+        account_lockout_store.record_failure(login_data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account is deactivated"
@@ -80,7 +80,7 @@ async def login(
     
     # Verify password
     if not verify_password(login_data.password, user.hashed_password):
-        await account_lockout_store.record_failure(login_data.email)
+        account_lockout_store.record_failure(login_data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
