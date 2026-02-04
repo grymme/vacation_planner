@@ -4,7 +4,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { vacationApi, UserResponse, VacationRequest } from '../api/vacation';
-import { teamsApi } from '../api/vacation';
+import { teamsApi, vacationBalanceApi, VacationBalance } from '../api/vacation';
 import { useAuth } from '../context/AuthContext';
 import ExportPanel from './ExportPanel';
 import './Calendar.css';
@@ -23,6 +23,7 @@ export default function Calendar({ onRequestCreate, viewMode = 'user' }: Calenda
   const [showModal, setShowModal] = useState(false);
   const [showActionModal, setShowActionModal] = useState(false);
   const [teams, setTeams] = useState<any[]>([]);
+  const [vacationBalance, setVacationBalance] = useState<VacationBalance | null>(null);
   
   const { user } = useAuth();
   const [newRequest, setNewRequest] = useState({
@@ -52,7 +53,17 @@ export default function Calendar({ onRequestCreate, viewMode = 'user' }: Calenda
       setVacationRequests(requestsRes.data);
       setTeams(teamsRes.data);
       
-      // Transform to calendar events
+      // Fetch vacation balance for user view
+      if (viewMode === 'user') {
+        try {
+          const balance = await vacationBalanceApi.getVacationBalance();
+          setVacationBalance(balance);
+        } catch (err) {
+          console.warn('Could not fetch vacation balance:', err);
+        }
+      }
+      
+      // Transform to calendar events with period-aware coloring
       const calendarEvents = requestsRes.data.map((vr: VacationRequest) => ({
         id: vr.id,
         title: `${vr.user.first_name} ${vr.user.last_name} (${vr.vacation_type})`,
@@ -60,7 +71,10 @@ export default function Calendar({ onRequestCreate, viewMode = 'user' }: Calenda
         end: vr.end_date,
         backgroundColor: getStatusColor(vr.status),
         borderColor: getStatusColor(vr.status),
-        extendedProps: { vacationRequest: vr }
+        extendedProps: { 
+          vacationRequest: vr,
+          periodInfo: vacationBalance?.vacation_period?.name || null
+        }
       }));
       
       setEvents(calendarEvents);
@@ -78,6 +92,17 @@ export default function Calendar({ onRequestCreate, viewMode = 'user' }: Calenda
       case 'rejected': return '#ef4444';
       case 'cancelled': return '#6b7280';
       default: return '#3b82f6';
+    }
+  };
+
+  const getPeriodColor = (status: string): string => {
+    // Returns slightly different shades based on status for period differentiation
+    switch (status) {
+      case 'approved': return '#16a34a';
+      case 'pending': return '#d97706';
+      case 'rejected': return '#dc2626';
+      case 'cancelled': return '#4b5563';
+      default: return '#2563eb';
     }
   };
 
@@ -145,7 +170,7 @@ export default function Calendar({ onRequestCreate, viewMode = 'user' }: Calenda
 
   return (
     <div className="calendar-wrapper">
-      <ExportPanel />
+      <ExportPanel onExportPNG={fetchData} />
       <div id="calendar-container" className="calendar-container">
         {isLoading ? (
           <div className="calendar-loading">Loading calendar...</div>
@@ -217,6 +242,14 @@ export default function Calendar({ onRequestCreate, viewMode = 'user' }: Calenda
                     </div>
                   )}
                   
+                  {/* Period info (would be populated from backend if available) */}
+                  {selectedRequest.vacation_type && (
+                    <div className="request-detail">
+                      <label>Vacation Year:</label>
+                      <span>{vacationBalance?.vacation_period?.name || 'Current Period'}</span>
+                    </div>
+                  )}
+                  
                   {/* Manager actions for pending requests */}
                   {viewMode === 'manager' && selectedRequest.status === 'pending' && (
                     <div className="manager-actions">
@@ -250,6 +283,13 @@ export default function Calendar({ onRequestCreate, viewMode = 'user' }: Calenda
                 </>
               ) : (
                 <form onSubmit={(e) => { e.preventDefault(); handleCreateRequest(); }}>
+                  {/* Show remaining days info when creating request */}
+                  {vacationBalance && (
+                    <div className="request-info">
+                      <span>Remaining days: {vacationBalance.remaining_days}</span>
+                    </div>
+                  )}
+                  
                   <div className="form-group">
                     <label>Start Date</label>
                     <input

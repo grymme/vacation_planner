@@ -1,0 +1,73 @@
+.vacation-balance {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  min-width: 280px;
+}
+
+.vacation-balance h3 {
+  margin: 0 0 15px 0;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.vacation-balance.loading,
+.vacation-balance.error,
+.vacation-balance.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.vacation-balance.error {
+  color: #ef4444;
+}
+
+.balance-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.balance-card {
+  text-align: center;
+  padding: 15px;
+  border-radius: 6px;
+}
+
+.balance-card.total { background: #e3f2fd; }
+.balance-card.approved { background: #e8f5e9; }
+.balance-card.pending { background: #fff3e0; }
+.balance-card.remaining { background: #f3e5f5; }
+
+.balance-card .label {
+  display: block;
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 5px;
+}
+
+.balance-card .value {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.period-dates {
+  font-size: 0.85rem;
+  color: #999;
+  text-align: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .balance-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

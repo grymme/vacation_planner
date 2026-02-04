@@ -15,7 +15,8 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import (
     Company, Function, Team, User, UserRole, TeamMembership, 
-    TeamManagerAssignment, VacationRequest, VacationStatus, InviteToken
+    TeamManagerAssignment, VacationRequest, VacationStatus, InviteToken,
+    VacationPeriod, VacationAllocation
 )
 from app.auth import hash_password, create_access_token
 
@@ -67,7 +68,7 @@ async def client(db_session: AsyncSession):
     
     # Create a test app without middleware for proper testing
     from fastapi import FastAPI
-    from app.routers import auth, users, vacation_requests, admin, manager, exports
+    from app.routers import auth, users, vacation_requests, admin, manager, exports, vacation_periods
     
     test_app = FastAPI(
         title="Vacation Planner API (Test)",
@@ -81,6 +82,10 @@ async def client(db_session: AsyncSession):
     test_app.include_router(admin.router, prefix="/api/v1")
     test_app.include_router(manager.router, prefix="/api/v1")
     test_app.include_router(exports.router, prefix="/api/v1")
+    # Include vacation periods router (has prefix built-in)
+    test_app.include_router(vacation_periods.router, prefix="/api/v1")
+    test_app.include_router(vacation_periods.router_allocations, prefix="/api/v1")
+    test_app.include_router(vacation_periods.router_balance, prefix="/api/v1")
     
     # Add health check
     @test_app.get("/health")
@@ -513,3 +518,108 @@ async def other_company_auth_headers(user_from_other_company: User) -> dict:
         company_id=user_from_other_company.company_id
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+# =============================================================================
+# Vacation Period Fixtures
+# =============================================================================
+@pytest_asyncio.fixture
+async def test_vacation_period(db_session: AsyncSession, test_company: Company) -> VacationPeriod:
+    """Create a test vacation period."""
+    from datetime import date
+    period = VacationPeriod(
+        company_id=test_company.id,
+        name="2024-2025",
+        start_date=date(2024, 4, 1),
+        end_date=date(2025, 3, 31),
+        is_default=True
+    )
+    db_session.add(period)
+    await db_session.commit()
+    await db_session.refresh(period)
+    return period
+
+
+@pytest_asyncio.fixture
+async def test_vacation_period2(db_session: AsyncSession, test_company: Company) -> VacationPeriod:
+    """Create a second test vacation period."""
+    from datetime import date
+    period = VacationPeriod(
+        company_id=test_company.id,
+        name="2025-2026",
+        start_date=date(2025, 4, 1),
+        end_date=date(2026, 3, 31),
+        is_default=False
+    )
+    db_session.add(period)
+    await db_session.commit()
+    await db_session.refresh(period)
+    return period
+
+
+@pytest_asyncio.fixture
+async def test_vacation_period_other_company(db_session: AsyncSession, test_company2: Company) -> VacationPeriod:
+    """Create a vacation period for another company."""
+    from datetime import date
+    period = VacationPeriod(
+        company_id=test_company2.id,
+        name="2024-2025",
+        start_date=date(2024, 4, 1),
+        end_date=date(2025, 3, 31),
+        is_default=True
+    )
+    db_session.add(period)
+    await db_session.commit()
+    await db_session.refresh(period)
+    return period
+
+
+# =============================================================================
+# Vacation Allocation Fixtures
+# =============================================================================
+@pytest_asyncio.fixture
+async def test_allocation(db_session: AsyncSession, regular_user: User, test_vacation_period: VacationPeriod) -> VacationAllocation:
+    """Create a test vacation allocation."""
+    allocation = VacationAllocation(
+        user_id=regular_user.id,
+        vacation_period_id=test_vacation_period.id,
+        total_days=25.0,
+        carried_over_days=5.0,
+        days_used=0.0
+    )
+    db_session.add(allocation)
+    await db_session.commit()
+    await db_session.refresh(allocation)
+    return allocation
+
+
+@pytest_asyncio.fixture
+async def test_allocation_with_used_days(db_session: AsyncSession, regular_user: User, test_vacation_period: VacationPeriod) -> VacationAllocation:
+    """Create a test vacation allocation with some days already used."""
+    allocation = VacationAllocation(
+        user_id=regular_user.id,
+        vacation_period_id=test_vacation_period.id,
+        total_days=25.0,
+        carried_over_days=5.0,
+        days_used=10.0
+    )
+    db_session.add(allocation)
+    await db_session.commit()
+    await db_session.refresh(allocation)
+    return allocation
+
+
+@pytest_asyncio.fixture
+async def test_allocation_for_user2(db_session: AsyncSession, regular_user2: User, test_vacation_period: VacationPeriod) -> VacationAllocation:
+    """Create a test vacation allocation for user2."""
+    allocation = VacationAllocation(
+        user_id=regular_user2.id,
+        vacation_period_id=test_vacation_period.id,
+        total_days=25.0,
+        carried_over_days=0.0,
+        days_used=0.0
+    )
+    db_session.add(allocation)
+    await db_session.commit()
+    await db_session.refresh(allocation)
+    return allocation

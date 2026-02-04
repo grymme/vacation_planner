@@ -1,0 +1,37 @@
+.vacation-period-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.vacation-period-selector.loading {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.vacation-period-selector label {
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+}
+
+.vacation-period-selector select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 0.95rem;
+  color: #333;
+  min-width: 200px;
+  cursor: pointer;
+}
+
+.vacation-period-selector select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}

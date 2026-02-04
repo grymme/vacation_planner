@@ -1,4 +1,5 @@
 import axios from 'axios';
+import html2canvas from 'html2canvas';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -73,6 +74,34 @@ export interface VacationCreate {
 export interface VacationAction {
   action: 'approve' | 'reject';
   comment?: string;
+}
+
+// Vacation Allocation and Balance Types
+export interface VacationPeriod {
+  id: string;
+  company_id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_default: boolean;
+}
+
+export interface VacationAllocation {
+  id: string;
+  user_id: string;
+  vacation_period_id: string;
+  total_days: number;
+  carried_over_days: number;
+  days_used: number;
+}
+
+export interface VacationBalance {
+  vacation_period: VacationPeriod;
+  allocation?: VacationAllocation;
+  total_available: number;
+  approved_days: number;
+  pending_days: number;
+  remaining_days: number;
 }
 
 // Vacation Requests API
@@ -160,9 +189,76 @@ export const adminApi = {
     api.delete(`/admin/teams/${teamId}/managers/${userId}`),
   getAuditLogs: (limit?: number, offset?: number) =>
     api.get<any[]>('/admin/audit-logs', { params: { limit, offset } }),
+  getAllocations: (params?: { 
+    vacation_period_id?: string; 
+    user_id?: string 
+  }): Promise<VacationAllocation[]> => {
+    const query = new URLSearchParams();
+    if (params?.vacation_period_id) query.append('vacation_period_id', params.vacation_period_id);
+    if (params?.user_id) query.append('user_id', params.user_id);
+    return api.get<VacationAllocation[]>(`/admin/allocations?${query}`).then(res => res.data);
+  },
 };
 
-export default api;
+// Vacation Balance API (user endpoints)
+export const vacationBalanceApi = {
+  getVacationBalance: (): Promise<VacationBalance> => {
+    return api.get<VacationBalance>('/me/vacation-balance').then(res => res.data);
+  },
+  
+  getAllVacationBalances: (): Promise<VacationBalance[]> => {
+    return api.get<VacationBalance[]>('/me/vacation-balance/all').then(res => res.data);
+  },
+};
+
+// Admin Vacation Periods API
+export const vacationPeriodsApi = {
+  getVacationPeriods: (): Promise<VacationPeriod[]> => {
+    return api.get<VacationPeriod[]>('/admin/vacation-periods').then(res => res.data);
+  },
+  
+  createVacationPeriod: (data: Omit<VacationPeriod, 'id'>): Promise<VacationPeriod> => {
+    return api.post<VacationPeriod>('/admin/vacation-periods', data).then(res => res.data);
+  },
+  
+  updateVacationPeriod: (id: string, data: Partial<VacationPeriod>): Promise<VacationPeriod> => {
+    return api.put<VacationPeriod>(`/admin/vacation-periods/${id}`, data).then(res => res.data);
+  },
+  
+  deleteVacationPeriod: (id: string): Promise<void> => {
+    return api.delete(`/admin/vacation-periods/${id}`).then(res => res.data);
+  },
+};
+
+// Admin Allocations API (moved from adminApi)
+export const allocationsApi = {
+  getAllocations: (params?: { 
+    vacation_period_id?: string; 
+    user_id?: string 
+  }): Promise<VacationAllocation[]> => {
+    const query = new URLSearchParams();
+    if (params?.vacation_period_id) query.append('vacation_period_id', params.vacation_period_id);
+    if (params?.user_id) query.append('user_id', params.user_id);
+    return api.get<VacationAllocation[]>(`/admin/allocations?${query}`).then(res => res.data);
+  },
+  
+  createAllocation: (data: {
+    user_id: string;
+    vacation_period_id: string;
+    total_days: number;
+    carried_over_days?: number;
+  }): Promise<VacationAllocation> => {
+    return api.post<VacationAllocation>('/admin/allocations', data).then(res => res.data);
+  },
+  
+  updateAllocation: (id: string, data: Partial<VacationAllocation>): Promise<VacationAllocation> => {
+    return api.put<VacationAllocation>(`/admin/allocations/${id}`, data).then(res => res.data);
+  },
+  
+  deleteAllocation: (id: string): Promise<void> => {
+    return api.delete(`/admin/allocations/${id}`).then(res => res.data);
+  },
+};
 
 export const exportApi = {
   exportCSV: (params: {
@@ -213,5 +309,21 @@ export const exportApi = {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  },
+  
+  exportPNG: async (elementId: string, filename: string) => {
+    const element = document.getElementById(elementId);
+    if (!element) throw new Error('Element not found');
+    
+    const canvas = await html2canvas(element, {
+      backgroundColor: '#ffffff',
+      scale: 2
+    });
+    
+    const dataUrl = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.download = `${filename}_${new Date().toISOString().split('T')[0]}.png`;
+    link.href = dataUrl;
+    link.click();
   }
 };

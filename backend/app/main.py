@@ -12,7 +12,7 @@ from app.config import settings
 from app.database import init_db, close_db
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.csrf import CSRFMiddleware
-from app.routers import auth, users, vacation_requests, admin, manager, exports
+from app.routers import auth, users, vacation_requests, admin, manager, exports, vacation_periods
 
 # Configure logging
 logging.basicConfig(
@@ -80,6 +80,9 @@ app.include_router(vacation_requests.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(manager.router, prefix="/api/v1")
 app.include_router(exports.router, prefix="/api/v1")
+app.include_router(vacation_periods.router, prefix="/api/v1")
+app.include_router(vacation_periods.router_allocations, prefix="/api/v1")
+app.include_router(vacation_periods.router_balance, prefix="/api/v1")
 
 
 # Health check endpoint

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { VacationBalance } from './VacationBalance';
 import './Header.css';
 
 export default function Header() {
@@ -49,6 +50,9 @@ export default function Header() {
         </nav>
         
         <div className="user-menu">
+          <div className="header-balance">
+            <VacationBalance />
+          </div>
           <div className="user-info">
             <span className="user-name">{user.first_name} {user.last_name}</span>
             <span className={`role-badge role-${user.role}`}>{user.role}</span>

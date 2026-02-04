@@ -17,6 +17,18 @@ cd "$PROJECT_ROOT"
 
 echo "Project root: $PROJECT_ROOT"
 
+# Check Docker is running and accessible
+if ! docker info > /dev/null 2>&1; then
+    echo "Error: Docker is not running or you don't have permission to access it."
+    echo ""
+    echo "Solutions:"
+    echo "  1. Run with sudo: sudo $0 $DOMAIN $PROFILE"
+    echo "  2. Or add your user to the docker group:"
+    echo "     sudo usermod -aG docker \$USER"
+    echo "     Then log out and back in."
+    exit 1
+fi
+
 # Check compose files
 BASE_COMPOSE="infra/docker-compose.yml"
 LAN_COMPOSE="infra/docker-compose.lan.yml"

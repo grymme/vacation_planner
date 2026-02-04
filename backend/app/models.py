@@ -6,7 +6,7 @@ from typing import Optional
 
 from sqlalchemy import (
     String, Text, DateTime, Date, ForeignKey, Integer, Enum as SQLEnum, 
-    Boolean, Index, UniqueConstraint, JSON, func, TypeDecorator
+    Boolean, Index, UniqueConstraint, JSON, func, TypeDecorator, Float
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -80,6 +80,7 @@ class Company(Base):
     functions: Mapped[list["Function"]] = relationship("Function", back_populates="company", cascade="all, delete-orphan")
     teams: Mapped[list["Team"]] = relationship("Team", back_populates="company", cascade="all, delete-orphan")
     users: Mapped[list["User"]] = relationship("User", back_populates="company")
+    vacation_periods: Mapped[list["VacationPeriod"]] = relationship("VacationPeriod", back_populates="company", cascade="all, delete-orphan")
     
     # Indexes
     __table_args__ = (Index("idx_companies_name", "name"),)
@@ -130,6 +131,67 @@ class Team(Base):
 
 
 # =============================================================================
+# VacationPeriod Model - company-level vacation year configuration
+# =============================================================================
+class VacationPeriod(Base):
+    """Company-level vacation year configuration."""
+    __tablename__ = "vacation_periods"
+    
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "2024-2025"
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)  # e.g., April 1
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)    # e.g., March 31
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    company: Mapped["Company"] = relationship("Company", back_populates="vacation_periods")
+    allocations: Mapped[list["VacationAllocation"]] = relationship("VacationAllocation", back_populates="vacation_period", cascade="all, delete-orphan")
+    vacation_requests: Mapped[list["VacationRequest"]] = relationship("VacationRequest", back_populates="vacation_period")
+    
+    # Indexes
+    __table_args__ = (
+        Index("idx_vacation_periods_company", "company_id"),
+        Index("idx_vacation_periods_dates", "company_id", "start_date", "end_date"),
+    )
+
+
+# =============================================================================
+# VacationAllocation Model - per-user, per-period vacation day tracking
+# =============================================================================
+class VacationAllocation(Base):
+    """Per-user, per-period vacation day tracking."""
+    __tablename__ = "vacation_allocations"
+    
+    id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    vacation_period_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("vacation_periods.id", ondelete="CASCADE"), nullable=False)
+    total_days: Mapped[float] = mapped_column(Float, default=25.0)
+    carried_over_days: Mapped[float] = mapped_column(Float, default=0.0)
+    days_used: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="vacation_allocations")
+    vacation_period: Mapped["VacationPeriod"] = relationship("VacationPeriod", back_populates="allocations")
+    
+    # Indexes and constraints
+    __table_args__ = (
+        Index("idx_vacation_allocations_user", "user_id"),
+        Index("idx_vacation_allocations_period", "vacation_period_id"),
+        UniqueConstraint("user_id", "vacation_period_id", name="uq_user_vacation_period"),
+    )
+    
+    @property
+    def remaining_days(self) -> float:
+        """Calculate remaining vacation days."""
+        return self.total_days + self.carried_over_days - self.days_used
+
+
+# =============================================================================
 # User Model - with role enum
 # =============================================================================
 class User(Base):
@@ -159,6 +221,7 @@ class User(Base):
     invite_tokens: Mapped[list["InviteToken"]] = relationship("InviteToken", back_populates="user", cascade="all, delete-orphan", foreign_keys="InviteToken.user_id")
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    vacation_allocations: Mapped[list["VacationAllocation"]] = relationship("VacationAllocation", back_populates="user", cascade="all, delete-orphan")
     
     # Indexes
     __table_args__ = (
@@ -231,9 +294,11 @@ class VacationRequest(Base):
     id: Mapped[uuid.UUID] = mapped_column(StringUUID, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     team_id: Mapped[Optional[uuid.UUID]] = mapped_column(StringUUID, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
+    vacation_period_id: Mapped[Optional[uuid.UUID]] = mapped_column(StringUUID, ForeignKey("vacation_periods.id", ondelete="SET NULL"), nullable=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     vacation_type: Mapped[str] = mapped_column(String(50), default="annual")  # annual, sick, personal, etc.
+    days_count: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Calculated business days
     status: Mapped[VacationStatus] = mapped_column(SQLEnum(VacationStatus), default=VacationStatus.PENDING, nullable=False)
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     approver_id: Mapped[Optional[uuid.UUID]] = mapped_column(StringUUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -245,6 +310,7 @@ class VacationRequest(Base):
     user: Mapped["User"] = relationship("User", back_populates="vacation_requests", foreign_keys=[user_id])
     approver: Mapped[Optional["User"]] = relationship("User", back_populates="approved_requests", foreign_keys=[approver_id])
     team: Mapped[Optional["Team"]] = relationship("Team", back_populates="vacation_requests")
+    vacation_period: Mapped[Optional["VacationPeriod"]] = relationship("VacationPeriod", back_populates="vacation_requests")
     
     # Indexes
     __table_args__ = (
@@ -252,6 +318,7 @@ class VacationRequest(Base):
         Index("idx_vr_status", "status"),
         Index("idx_vr_team_dates", "team_id", "start_date", "end_date"),
         Index("idx_vr_approver", "approver_id"),
+        Index("idx_vr_vacation_period", "vacation_period_id"),
     )
     
     @property

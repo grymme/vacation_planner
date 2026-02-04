@@ -221,6 +221,19 @@ curl -X PUT http://localhost:8000/users/me \
 
 ## Troubleshooting
 
+### Docker Permission Denied
+
+If you see "Permission denied" errors when running the deploy script:
+
+```bash
+# Solution 1: Run with sudo
+sudo ./scripts/deploy.sh semester.westermo.com lan
+
+# Solution 2: Add your user to the docker group (recommended)
+sudo usermod -aG docker $USER
+# Log out and back in for changes to take effect
+```
+
 ### Containers Not Starting
 
 ```bash

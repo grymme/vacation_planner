@@ -249,6 +249,88 @@ class TeamWithMembersResponse(BaseModel):
 
 
 # =============================================================================
+# VacationPeriod Schemas
+# =============================================================================
+class VacationPeriodCreate(BaseModel):
+    """Vacation period create schema."""
+    company_id: UUID
+    name: str = Field(..., min_length=1, max_length=100)
+    start_date: date
+    end_date: date
+    is_default: bool = False
+    
+    @model_validator(mode='after')
+    def validate_dates(self):
+        if self.end_date <= self.start_date:
+            raise ValueError('end_date must be after start_date')
+        return self
+
+
+class VacationPeriodUpdate(BaseModel):
+    """Vacation period update schema."""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    is_default: Optional[bool] = None
+
+
+class VacationPeriodResponse(BaseModel):
+    """Vacation period response schema."""
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: UUID
+    company_id: UUID
+    name: str
+    start_date: date
+    end_date: date
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# =============================================================================
+# VacationAllocation Schemas
+# =============================================================================
+class VacationAllocationCreate(BaseModel):
+    """Vacation allocation create schema."""
+    user_id: UUID
+    vacation_period_id: UUID
+    total_days: float = 25.0
+    carried_over_days: float = 0.0
+
+
+class VacationAllocationUpdate(BaseModel):
+    """Vacation allocation update schema."""
+    total_days: Optional[float] = None
+    carried_over_days: Optional[float] = None
+
+
+class VacationAllocationResponse(BaseModel):
+    """Vacation allocation response schema."""
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: UUID
+    user_id: UUID
+    vacation_period_id: UUID
+    total_days: float
+    carried_over_days: float
+    days_used: float
+    remaining_days: float  # Computed property from model
+    created_at: datetime
+    updated_at: datetime
+
+
+class VacationBalanceResponse(BaseModel):
+    """Vacation balance response for users."""
+    vacation_period: VacationPeriodResponse
+    allocation: Optional[VacationAllocationResponse] = None
+    total_available: float
+    approved_days: float
+    pending_days: float
+    remaining_days: float
+
+
+# =============================================================================
 # Input Sanitization Utilities
 # =============================================================================
 def sanitize_input(text: str) -> str:
@@ -341,9 +423,11 @@ class VacationRequestResponse(BaseModel):
     id: UUID
     user_id: UUID
     team_id: Optional[UUID]
+    vacation_period_id: Optional[UUID]
     start_date: date
     end_date: date
     vacation_type: str
+    days_count: Optional[float]
     status: VacationStatus
     reason: Optional[str]
     approver_id: Optional[UUID]

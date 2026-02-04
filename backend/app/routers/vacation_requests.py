@@ -4,14 +4,15 @@ from typing import Annotated, Optional, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import (
     User, VacationRequest, VacationStatus, TeamMembership, 
-    TeamManagerAssignment, AuditAction, Team, UserRole
+    TeamManagerAssignment, AuditAction, Team, UserRole,
+    VacationPeriod, VacationAllocation
 )
 from app.auth import get_current_user, require_role
 from app.audit import log_audit
@@ -21,6 +22,7 @@ from app.schemas import (
     VacationRequestUpdate,
     VacationRequestAction,
 )
+from app.utils import calculate_business_days, get_vacation_period_for_date
 
 router = APIRouter(prefix="/vacation-requests", tags=["Vacation Requests"])
 
@@ -63,10 +65,57 @@ async def create_vacation_request(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new vacation request."""
+    """Create a new vacation request with auto-calculated days and period assignment."""
     # Validate dates
     if request.end_date < request.start_date:
         raise HTTPException(status_code=400, detail="End date must be after start date")
+    
+    # Calculate business days
+    days_count = calculate_business_days(request.start_date, request.end_date)
+    
+    # Find vacation period for start_date
+    periods_result = await db.execute(
+        select(VacationPeriod).where(
+            VacationPeriod.company_id == current_user.company_id
+        )
+    )
+    periods = periods_result.scalars().all()
+    period = get_vacation_period_for_date(request.start_date, periods)
+    
+    if not period:
+        raise HTTPException(
+            status_code=400, 
+            detail="No vacation period found for the requested date"
+        )
+    
+    # Check remaining balance (if allocation exists)
+    allocation_result = await db.execute(
+        select(VacationAllocation).where(
+            VacationAllocation.user_id == current_user.id,
+            VacationAllocation.vacation_period_id == period.id
+        )
+    )
+    allocation = allocation_result.scalar_one_or_none()
+    
+    if allocation:
+        # Get approved days for this period
+        approved_result = await db.execute(
+            select(func.coalesce(func.sum(VacationRequest.days_count), 0.0)).where(
+                VacationRequest.user_id == current_user.id,
+                VacationRequest.vacation_period_id == period.id,
+                VacationRequest.status == VacationStatus.APPROVED
+            )
+        )
+        approved_days = approved_result.scalar() or 0.0
+        
+        total_available = allocation.total_days + allocation.carried_over_days
+        remaining = total_available - approved_days
+        
+        if days_count > remaining:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Insufficient vacation balance. Requested: {days_count}, Remaining: {remaining}"
+            )
     
     # Check for overlapping requests
     overlap = await db.execute(
@@ -111,9 +160,11 @@ async def create_vacation_request(
     vr = VacationRequest(
         user_id=current_user.id,
         team_id=request.team_id,
+        vacation_period_id=period.id,
         start_date=request.start_date,
         end_date=request.end_date,
         vacation_type=request.vacation_type,
+        days_count=days_count,
         reason=request.reason,
         status=VacationStatus.PENDING
     )
